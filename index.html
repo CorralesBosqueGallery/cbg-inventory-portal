@@ -218,8 +218,8 @@
                 setNewArtist({ firstName: '', lastName: '', type: 'coop', customRate: '' });
             };
 
-            // Password Change Modal Component
-            const PasswordChangeModal = () => (
+            // Password Change Modal - rendered inline to avoid re-render issues
+            const passwordModal = showPasswordChange ? (
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
                     <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md mx-4">
                         <h3 className="text-xl font-bold mb-4">Change Password</h3>
@@ -283,7 +283,7 @@
                         </form>
                     </div>
                 </div>
-            );
+            ) : null;
 
             if (!currentUser) {
                 return (
@@ -324,7 +324,7 @@
                 const approvedSubmissions = submissions.filter(s => s.status === 'approved');
                 return (
                     <div className="min-h-screen bg-gray-50">
-                        {showPasswordChange && <PasswordChangeModal />}
+                        {passwordModal}
                         <div className="bg-white shadow-sm border-b">
                             <div className="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
                                 <div>
@@ -487,7 +487,7 @@
 
             return (
                 <div className="min-h-screen bg-gradient-to-br from-amber-50 to-orange-100">
-                    {showPasswordChange && <PasswordChangeModal />}
+                    {passwordModal}
                     <div className="bg-white shadow-sm">
                         <div className="max-w-4xl mx-auto px-4 py-4 flex justify-between items-center">
                             <div>
