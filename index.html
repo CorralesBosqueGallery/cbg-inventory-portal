@@ -53,6 +53,9 @@
             const [showAddArtist, setShowAddArtist] = useState(false);
             const [newArtist, setNewArtist] = useState({ firstName: '', lastName: '', type: 'coop', customRate: '' });
             const [processing, setProcessing] = useState(false);
+            const [showPasswordChange, setShowPasswordChange] = useState(false);
+            const [passwordForm, setPasswordForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
+            const [passwordError, setPasswordError] = useState('');
 
             useEffect(() => {
                 const saved = localStorage.getItem('cbg-submissions');
@@ -88,6 +91,53 @@
                 setCurrentUser(null);
                 setFormData({ title: '', type: '', medium: '', description: '', height: '', width: '', price: '', quantity: '1', discounts: '' });
                 setIsNewArtwork(true);
+                setShowPasswordChange(false);
+                setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
+                setPasswordError('');
+            };
+
+            const handlePasswordChange = (e) => {
+                e.preventDefault();
+                setPasswordError('');
+
+                // Validate current password
+                if (passwordForm.currentPassword !== currentUser.password) {
+                    setPasswordError('Current password is incorrect');
+                    return;
+                }
+
+                // Validate new password
+                if (passwordForm.newPassword.length < 6) {
+                    setPasswordError('New password must be at least 6 characters');
+                    return;
+                }
+
+                // Validate confirmation
+                if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+                    setPasswordError('New passwords do not match');
+                    return;
+                }
+
+                // Update password in database
+                const updatedArtists = {
+                    ...artistsDb,
+                    [currentUser.username]: {
+                        ...artistsDb[currentUser.username],
+                        password: passwordForm.newPassword
+                    }
+                };
+                saveArtists(updatedArtists);
+
+                // Update current user session
+                setCurrentUser({
+                    ...currentUser,
+                    password: passwordForm.newPassword
+                });
+
+                // Reset form and close modal
+                setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
+                setShowPasswordChange(false);
+                alert('Password changed successfully!');
             };
 
             useEffect(() => {
@@ -168,6 +218,73 @@
                 setNewArtist({ firstName: '', lastName: '', type: 'coop', customRate: '' });
             };
 
+            // Password Change Modal Component
+            const PasswordChangeModal = () => (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                    <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md mx-4">
+                        <h3 className="text-xl font-bold mb-4">Change Password</h3>
+                        <form onSubmit={handlePasswordChange} className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Current Password</label>
+                                <input
+                                    type="password"
+                                    value={passwordForm.currentPassword}
+                                    onChange={(e) => setPasswordForm({ ...passwordForm, currentPassword: e.target.value })}
+                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500"
+                                    required
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">New Password</label>
+                                <input
+                                    type="password"
+                                    value={passwordForm.newPassword}
+                                    onChange={(e) => setPasswordForm({ ...passwordForm, newPassword: e.target.value })}
+                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500"
+                                    required
+                                    minLength={6}
+                                />
+                                <p className="text-xs text-gray-500 mt-1">Minimum 6 characters</p>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Confirm New Password</label>
+                                <input
+                                    type="password"
+                                    value={passwordForm.confirmPassword}
+                                    onChange={(e) => setPasswordForm({ ...passwordForm, confirmPassword: e.target.value })}
+                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500"
+                                    required
+                                />
+                            </div>
+                            {passwordError && (
+                                <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
+                                    ⚠️ {passwordError}
+                                </div>
+                            )}
+                            <div className="flex space-x-3 pt-2">
+                                <button
+                                    type="submit"
+                                    className="flex-1 bg-orange-600 hover:bg-orange-700 text-white font-semibold py-2 rounded-lg transition"
+                                >
+                                    Update Password
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setShowPasswordChange(false);
+                                        setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
+                                        setPasswordError('');
+                                    }}
+                                    className="flex-1 bg-gray-200 hover:bg-gray-300 font-semibold py-2 rounded-lg transition"
+                                >
+                                    Cancel
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            );
+
             if (!currentUser) {
                 return (
                     <div className="min-h-screen bg-gradient-to-br from-amber-50 to-orange-100 flex items-center justify-center p-4">
@@ -207,15 +324,21 @@
                 const approvedSubmissions = submissions.filter(s => s.status === 'approved');
                 return (
                     <div className="min-h-screen bg-gray-50">
+                        {showPasswordChange && <PasswordChangeModal />}
                         <div className="bg-white shadow-sm border-b">
                             <div className="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
                                 <div>
                                     <h1 className="text-2xl font-bold text-gray-800">Admin Dashboard</h1>
                                     <p className="text-sm text-gray-600">Corrales Bosque Gallery</p>
                                 </div>
-                                <button onClick={handleLogout} className="flex items-center space-x-2 px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg">
-                                    🚪 <span>Logout</span>
-                                </button>
+                                <div className="flex items-center space-x-3">
+                                    <button onClick={() => setShowPasswordChange(true)} className="flex items-center space-x-2 px-4 py-2 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-lg">
+                                        🔑 <span>Change Password</span>
+                                    </button>
+                                    <button onClick={handleLogout} className="flex items-center space-x-2 px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg">
+                                        🚪 <span>Logout</span>
+                                    </button>
+                                </div>
                             </div>
                         </div>
                         <div className="bg-white border-b">
@@ -364,13 +487,21 @@
 
             return (
                 <div className="min-h-screen bg-gradient-to-br from-amber-50 to-orange-100">
+                    {showPasswordChange && <PasswordChangeModal />}
                     <div className="bg-white shadow-sm">
                         <div className="max-w-4xl mx-auto px-4 py-4 flex justify-between items-center">
                             <div>
                                 <h1 className="text-2xl font-bold text-gray-800">Welcome, {currentUser.name}!</h1>
                                 <p className="text-sm text-gray-600">Corrales Bosque Gallery Inventory Portal</p>
                             </div>
-                            <button onClick={handleLogout} className="flex items-center space-x-2 px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg">🚪 <span>Logout</span></button>
+                            <div className="flex items-center space-x-3">
+                                <button onClick={() => setShowPasswordChange(true)} className="flex items-center space-x-2 px-4 py-2 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-lg">
+                                    🔑 <span>Change Password</span>
+                                </button>
+                                <button onClick={handleLogout} className="flex items-center space-x-2 px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg">
+                                    🚪 <span>Logout</span>
+                                </button>
+                            </div>
                         </div>
                     </div>
                     <div className="max-w-4xl mx-auto px-4 py-8">
@@ -394,8 +525,7 @@
                             <form onSubmit={handleSubmit} className="space-y-6">
                                 <div>
                                     <label className="block text-sm font-medium mb-1">Artwork Title *</label>
-                                    <input type="text" value={formData.title} onChange={(e) => setFormData({ ...formData, title: e.target.value
-         })} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500" required />
+                                    <input type="text" value={formData.title} onChange={(e) => setFormData({ ...formData, title: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500" required />
                                     {duplicateWarning && (
                                         <div className="mt-2 p-3 bg-yellow-50 border border-yellow-200 rounded-lg flex items-start">
                                             ⚠️
@@ -482,4 +612,4 @@
         root.render(<InventoryPortal />);
     </script>
 </body>
-</html>                                                                                                 
+</html>
