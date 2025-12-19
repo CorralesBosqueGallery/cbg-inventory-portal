@@ -56,6 +56,7 @@
             const [showPasswordChange, setShowPasswordChange] = useState(false);
             const [passwordForm, setPasswordForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
             const [passwordError, setPasswordError] = useState('');
+            const [showPasswords, setShowPasswords] = useState(false);
 
             useEffect(() => {
                 const saved = localStorage.getItem('cbg-submissions');
@@ -99,26 +100,18 @@
             const handlePasswordChange = (e) => {
                 e.preventDefault();
                 setPasswordError('');
-
-                // Validate current password
                 if (passwordForm.currentPassword !== currentUser.password) {
                     setPasswordError('Current password is incorrect');
                     return;
                 }
-
-                // Validate new password
                 if (passwordForm.newPassword.length < 6) {
                     setPasswordError('New password must be at least 6 characters');
                     return;
                 }
-
-                // Validate confirmation
                 if (passwordForm.newPassword !== passwordForm.confirmPassword) {
                     setPasswordError('New passwords do not match');
                     return;
                 }
-
-                // Update password in database
                 const updatedArtists = {
                     ...artistsDb,
                     [currentUser.username]: {
@@ -127,19 +120,67 @@
                     }
                 };
                 saveArtists(updatedArtists);
-
-                // Update current user session
-                setCurrentUser({
-                    ...currentUser,
-                    password: passwordForm.newPassword
-                });
-
-                // Reset form and close modal
+                setCurrentUser({ ...currentUser, password: passwordForm.newPassword });
                 setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
                 setShowPasswordChange(false);
                 alert('Password changed successfully!');
             };
 
+            const handleResetPassword = (username) => {
+                const newPassword = Math.random().toString(36).slice(-8);
+                const updatedArtists = {
+                    ...artistsDb,
+                    [username]: { ...artistsDb[username], password: newPassword }
+                };
+                saveArtists(updatedArtists);
+                alert(`Password reset for ${artistsDb[username].name}!\n\nNew password: ${newPassword}\n\nPlease share this with the artist.`);
+            };
+
+            const printSKULabels = (items) => {
+                const printWindow = window.open('', '_blank');
+                const labelsHTML = items.map(item => `
+                    <div class="label">
+                        <div class="category">${item.category}</div>
+                        <div class="title">${item.title}</div>
+                        <div class="price">$${parseFloat(item.price).toFixed(2)}</div>
+                        <div class="sku">${item.sku || item.squareId || 'SKU-' + item.id}</div>
+                    </div>
+                `).join('');
+                printWindow.document.write(`<!DOCTYPE html><html><head><title>SKU Labels</title><style>
+                    @page { size: 2.125in 1in; margin: 0; }
+                    body { font-family: Arial, sans-serif; margin: 0; padding: 0; }
+                    .label { page-break-after: always; width: 2.125in; height: 1in; padding: 0.05in; box-sizing: border-box; display: flex; flex-direction: column; justify-content: space-between; }
+                    .label:last-child { page-break-after: avoid; }
+                    .category { font-size: 7pt; font-weight: bold; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+                    .title { font-size: 8pt; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+                    .price { font-size: 10pt; font-weight: bold; }
+                    .sku { font-size: 7pt; font-family: monospace; color: #666; }
+                </style></head><body>${labelsHTML}<script>window.onload=function(){window.print();}<\/script></body></html>`);
+                printWindow.document.close();
+            };
+
+            const printWallLabels = (items) => {
+                const printWindow = window.open('', '_blank');
+                const labelsHTML = items.map(item => `
+                    <div class="label">
+                        <div class="artist">${item.artistName}</div>
+                        <div class="title">"${item.title}"</div>
+                        <div class="medium">${item.medium}</div>
+                        <div class="price">$${parseFloat(item.price).toFixed(2)}</div>
+                    </div>
+                `).join('');
+                printWindow.document.write(`<!DOCTYPE html><html><head><title>Wall Labels</title><style>
+                    @page { size: 3.5in 2in; margin: 0; }
+                    body { font-family: Georgia, serif; margin: 0; padding: 0; }
+                    .label { page-break-after: always; width: 3.5in; height: 2in; padding: 0.15in; box-sizing: border-box; display: flex; flex-direction: column; justify-content: center; text-align: center; }
+                    .label:last-child { page-break-after: avoid; }
+                    .artist { font-size: 11pt; font-weight: bold; margin-bottom: 0.1in; }
+                    .title { font-size: 10pt; font-style: italic; margin-bottom: 0.1in; }
+                    .medium { font-size: 9pt; color: #444; margin-bottom: 0.1in; }
+                    .price { font-size: 11pt; font-weight: bold; }
+                </style></head><body>${labelsHTML}<script>window.onload=function(){window.print();}<\/script></body></html>`);
+                printWindow.document.close();
+            };
             useEffect(() => {
                 if (formData.title && currentUser && isNewArtwork) {
                     const userSubmissions = submissions.filter(s => s.artistName === currentUser.name);
@@ -171,25 +212,16 @@
                 alert('Artwork submitted successfully! Pending admin approval.');
             };
 
-            const handleApprove = (id) => {
-                saveSubmissions(submissions.map(s => s.id === id ? { ...s, status: 'approved' } : s));
-            };
-
-            const handleReject = (id, reason) => {
-                saveSubmissions(submissions.map(s => s.id === id ? { ...s, status: 'rejected', rejectionReason: reason } : s));
-            };
+            const handleApprove = (id) => saveSubmissions(submissions.map(s => s.id === id ? { ...s, status: 'approved' } : s));
+            const handleReject = (id, reason) => saveSubmissions(submissions.map(s => s.id === id ? { ...s, status: 'rejected', rejectionReason: reason } : s));
 
             const handleProcess = async () => {
                 const toProcess = submissions.filter(s => s.status === 'approved');
                 if (toProcess.length === 0) { alert('No approved items to process'); return; }
-                if (!confirm(`Upload ${toProcess.length} items to Square and generate labels?`)) return;
+                if (!confirm(`Upload ${toProcess.length} items to Square?`)) return;
                 setProcessing(true);
                 try {
-                    const response = await fetch('/api/square-upload', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(toProcess)
-                    });
+                    const response = await fetch('/api/square-upload', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(toProcess) });
                     const result = await response.json();
                     if (result.success) {
                         const updated = submissions.map(s => {
@@ -197,28 +229,23 @@
                             return match ? { ...s, status: 'processed', processedAt: new Date().toISOString(), squareId: match.squareId, sku: match.sku } : s;
                         });
                         saveSubmissions(updated);
-                        alert(`✅ Success!\n\n${toProcess.length} items uploaded to Square.\n\nNext: Print labels from the print queue.`);
-                    } else {
-                        throw new Error(result.error || 'Upload failed');
-                    }
+                        alert(`✅ Success! ${toProcess.length} items uploaded.\n\nGo to "Print Labels" tab to print.`);
+                    } else throw new Error(result.error || 'Upload failed');
                 } catch (error) {
-                    alert(`❌ Upload failed: ${error.message}\n\nPlease check your Square credentials in environment variables.`);
-                } finally {
-                    setProcessing(false);
-                }
+                    alert(`❌ Upload failed: ${error.message}`);
+                } finally { setProcessing(false); }
             };
 
             const handleAddArtist = () => {
                 const username = `${newArtist.firstName.toLowerCase()}.${newArtist.lastName.toLowerCase()}`.replace(/\s/g, '-');
                 const rate = newArtist.type === 'coop' ? 20 : newArtist.type === 'consignment' ? 50 : parseInt(newArtist.customRate);
                 const password = Math.random().toString(36).slice(-8);
-                saveArtists({ ...artistsDb, [username]: { name: `${newArtist.firstName} ${newArtist.lastName}`, type: newArtist.type, rate: rate, password: password, active: true } });
-                alert(`Artist added!\n\nUsername: ${username}\nPassword: ${password}\n\nShare these credentials with the artist.`);
+                saveArtists({ ...artistsDb, [username]: { name: `${newArtist.firstName} ${newArtist.lastName}`, type: newArtist.type, rate, password, active: true } });
+                alert(`Artist added!\n\nUsername: ${username}\nPassword: ${password}`);
                 setShowAddArtist(false);
                 setNewArtist({ firstName: '', lastName: '', type: 'coop', customRate: '' });
             };
 
-            // Password Change Modal - rendered inline to avoid re-render issues
             const passwordModal = showPasswordChange ? (
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
                     <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md mx-4">
@@ -226,59 +253,21 @@
                         <form onSubmit={handlePasswordChange} className="space-y-4">
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">Current Password</label>
-                                <input
-                                    type="password"
-                                    value={passwordForm.currentPassword}
-                                    onChange={(e) => setPasswordForm({ ...passwordForm, currentPassword: e.target.value })}
-                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500"
-                                    required
-                                />
+                                <input type="password" value={passwordForm.currentPassword} onChange={(e) => setPasswordForm({ ...passwordForm, currentPassword: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg" required />
                             </div>
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">New Password</label>
-                                <input
-                                    type="password"
-                                    value={passwordForm.newPassword}
-                                    onChange={(e) => setPasswordForm({ ...passwordForm, newPassword: e.target.value })}
-                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500"
-                                    required
-                                    minLength={6}
-                                />
+                                <input type="password" value={passwordForm.newPassword} onChange={(e) => setPasswordForm({ ...passwordForm, newPassword: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg" required minLength={6} />
                                 <p className="text-xs text-gray-500 mt-1">Minimum 6 characters</p>
                             </div>
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">Confirm New Password</label>
-                                <input
-                                    type="password"
-                                    value={passwordForm.confirmPassword}
-                                    onChange={(e) => setPasswordForm({ ...passwordForm, confirmPassword: e.target.value })}
-                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500"
-                                    required
-                                />
+                                <input type="password" value={passwordForm.confirmPassword} onChange={(e) => setPasswordForm({ ...passwordForm, confirmPassword: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg" required />
                             </div>
-                            {passwordError && (
-                                <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
-                                    ⚠️ {passwordError}
-                                </div>
-                            )}
+                            {passwordError && <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">⚠️ {passwordError}</div>}
                             <div className="flex space-x-3 pt-2">
-                                <button
-                                    type="submit"
-                                    className="flex-1 bg-orange-600 hover:bg-orange-700 text-white font-semibold py-2 rounded-lg transition"
-                                >
-                                    Update Password
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        setShowPasswordChange(false);
-                                        setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
-                                        setPasswordError('');
-                                    }}
-                                    className="flex-1 bg-gray-200 hover:bg-gray-300 font-semibold py-2 rounded-lg transition"
-                                >
-                                    Cancel
-                                </button>
+                                <button type="submit" className="flex-1 bg-orange-600 hover:bg-orange-700 text-white font-semibold py-2 rounded-lg">Update Password</button>
+                                <button type="button" onClick={() => { setShowPasswordChange(false); setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' }); setPasswordError(''); }} className="flex-1 bg-gray-200 hover:bg-gray-300 font-semibold py-2 rounded-lg">Cancel</button>
                             </div>
                         </form>
                     </div>
@@ -296,19 +285,17 @@
                             <form onSubmit={handleLogin} className="space-y-4">
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-1">Username</label>
-                                    <input type="text" value={loginForm.username} onChange={(e) => setLoginForm({ ...loginForm, username: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500" placeholder="firstname.lastname" required />
+                                    <input type="text" value={loginForm.username} onChange={(e) => setLoginForm({ ...loginForm, username: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="firstname.lastname" required />
                                 </div>
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
                                     <div className="relative">
-                                        <input type={loginForm.showPassword ? 'text' : 'password'} value={loginForm.password} onChange={(e) => setLoginForm({ ...loginForm, password: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 pr-10" required />
-                                        <button type="button" onClick={() => setLoginForm({ ...loginForm, showPassword: !loginForm.showPassword })} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500">
-                                            {loginForm.showPassword ? '🔒' : '👁️'}
-                                        </button>
+                                        <input type={loginForm.showPassword ? 'text' : 'password'} value={loginForm.password} onChange={(e) => setLoginForm({ ...loginForm, password: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg pr-10" required />
+                                        <button type="button" onClick={() => setLoginForm({ ...loginForm, showPassword: !loginForm.showPassword })} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500">{loginForm.showPassword ? '🔒' : '👁️'}</button>
                                     </div>
                                 </div>
                                 {loginError && <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">⚠️ {loginError}</div>}
-                                <button type="submit" className="w-full bg-orange-600 hover:bg-orange-700 text-white font-semibold py-3 rounded-lg transition">Log In</button>
+                                <button type="submit" className="w-full bg-orange-600 hover:bg-orange-700 text-white font-semibold py-3 rounded-lg">Log In</button>
                             </form>
                             <div className="mt-6 pt-6 border-t border-gray-200 text-center text-sm text-gray-600">
                                 <p>Initial password for artists: <code className="bg-gray-100 px-2 py-1 rounded">temp123</code></p>
@@ -322,130 +309,113 @@
             if (currentUser.type === 'admin') {
                 const pendingSubmissions = submissions.filter(s => s.status === 'pending');
                 const approvedSubmissions = submissions.filter(s => s.status === 'approved');
+                const processedSubmissions = submissions.filter(s => s.status === 'processed');
                 return (
                     <div className="min-h-screen bg-gray-50">
                         {passwordModal}
                         <div className="bg-white shadow-sm border-b">
                             <div className="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
-                                <div>
-                                    <h1 className="text-2xl font-bold text-gray-800">Admin Dashboard</h1>
-                                    <p className="text-sm text-gray-600">Corrales Bosque Gallery</p>
-                                </div>
+                                <div><h1 className="text-2xl font-bold text-gray-800">Admin Dashboard</h1><p className="text-sm text-gray-600">Corrales Bosque Gallery</p></div>
                                 <div className="flex items-center space-x-3">
-                                    <button onClick={() => setShowPasswordChange(true)} className="flex items-center space-x-2 px-4 py-2 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-lg">
-                                        🔑 <span>Change Password</span>
-                                    </button>
-                                    <button onClick={handleLogout} className="flex items-center space-x-2 px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg">
-                                        🚪 <span>Logout</span>
-                                    </button>
+                                    <button onClick={() => setShowPasswordChange(true)} className="flex items-center space-x-2 px-4 py-2 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-lg">🔑 <span>Change Password</span></button>
+                                    <button onClick={handleLogout} className="flex items-center space-x-2 px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg">🚪 <span>Logout</span></button>
                                 </div>
                             </div>
                         </div>
                         <div className="bg-white border-b">
                             <div className="max-w-7xl mx-auto px-4 flex space-x-1">
-                                <button onClick={() => setAdminView('pending')} className={`px-6 py-3 font-medium ${adminView === 'pending' ? 'border-b-2 border-orange-600 text-orange-600' : 'text-gray-600'}`}>
-                                    📥 Pending ({pendingSubmissions.length})
-                                </button>
-                                <button onClick={() => setAdminView('approved')} className={`px-6 py-3 font-medium ${adminView === 'approved' ? 'border-b-2 border-orange-600 text-orange-600' : 'text-gray-600'}`}>
-                                    ✅ Ready ({approvedSubmissions.length})
-                                </button>
-                                <button onClick={() => setAdminView('artists')} className={`px-6 py-3 font-medium ${adminView === 'artists' ? 'border-b-2 border-orange-600 text-orange-600' : 'text-gray-600'}`}>
-                                    👥 Artists
-                                </button>
+                                <button onClick={() => setAdminView('pending')} className={`px-6 py-3 font-medium ${adminView === 'pending' ? 'border-b-2 border-orange-600 text-orange-600' : 'text-gray-600'}`}>📥 Pending ({pendingSubmissions.length})</button>
+                                <button onClick={() => setAdminView('approved')} className={`px-6 py-3 font-medium ${adminView === 'approved' ? 'border-b-2 border-orange-600 text-orange-600' : 'text-gray-600'}`}>✅ Ready ({approvedSubmissions.length})</button>
+                                <button onClick={() => setAdminView('print')} className={`px-6 py-3 font-medium ${adminView === 'print' ? 'border-b-2 border-orange-600 text-orange-600' : 'text-gray-600'}`}>🏷️ Print Labels ({processedSubmissions.length})</button>
+                                <button onClick={() => setAdminView('artists')} className={`px-6 py-3 font-medium ${adminView === 'artists' ? 'border-b-2 border-orange-600 text-orange-600' : 'text-gray-600'}`}>👥 Artists</button>
                             </div>
                         </div>
                         <div className="max-w-7xl mx-auto px-4 py-6">
                             {adminView === 'pending' && (
                                 <div className="space-y-4">
-                                    {pendingSubmissions.length === 0 ? (
-                                        <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500">No pending submissions</div>
-                                    ) : (
-                                        pendingSubmissions.map(sub => (
-                                            <div key={sub.id} className="bg-white rounded-lg shadow p-6">
-                                                <div className="flex justify-between mb-4">
-                                                    <div>
-                                                        <h3 className="text-xl font-bold">{sub.title}</h3>
-                                                        <p className="text-sm text-gray-600">by {sub.artistName}</p>
-                                                    </div>
-                                                    {sub.isVariation && <span className="bg-purple-100 text-purple-800 text-xs px-3 py-1 rounded-full">🔗 Variation</span>}
-                                                </div>
-                                                <div className="grid grid-cols-2 gap-4 mb-4 text-sm">
-                                                    <div><span className="font-medium">Type:</span> {sub.type}</div>
-                                                    <div><span className="font-medium">Medium:</span> {sub.medium}</div>
-                                                    <div><span className="font-medium">Size:</span> {sub.dimensions}</div>
-                                                    <div><span className="font-medium">Price:</span> ${sub.price}</div>
-                                                </div>
-                                                {sub.description && <p className="text-sm text-gray-600 mb-4 italic">{sub.description}</p>}
-                                                <div className="flex space-x-3">
-                                                    <button onClick={() => handleApprove(sub.id)} className="flex items-center space-x-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg">
-                                                        ✅ <span>Approve</span>
-                                                    </button>
-                                                    <button onClick={() => { const r = prompt('Reason:'); if (r) handleReject(sub.id, r); }} className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg">Reject</button>
-                                                </div>
+                                    {pendingSubmissions.length === 0 ? <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500">No pending submissions</div> : pendingSubmissions.map(sub => (
+                                        <div key={sub.id} className="bg-white rounded-lg shadow p-6">
+                                            <div className="flex justify-between mb-4">
+                                                <div><h3 className="text-xl font-bold">{sub.title}</h3><p className="text-sm text-gray-600">by {sub.artistName}</p></div>
+                                                {sub.isVariation && <span className="bg-purple-100 text-purple-800 text-xs px-3 py-1 rounded-full">🔗 Variation</span>}
                                             </div>
-                                        ))
-                                    )}
+                                            <div className="grid grid-cols-2 gap-4 mb-4 text-sm">
+                                                <div><span className="font-medium">Type:</span> {sub.type}</div>
+                                                <div><span className="font-medium">Medium:</span> {sub.medium}</div>
+                                                <div><span className="font-medium">Size:</span> {sub.dimensions}</div>
+                                                <div><span className="font-medium">Price:</span> ${sub.price}</div>
+                                            </div>
+                                            {sub.description && <p className="text-sm text-gray-600 mb-4 italic">{sub.description}</p>}
+                                            <div className="flex space-x-3">
+                                                <button onClick={() => handleApprove(sub.id)} className="flex items-center space-x-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg">✅ <span>Approve</span></button>
+                                                <button onClick={() => { const r = prompt('Reason:'); if (r) handleReject(sub.id, r); }} className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg">Reject</button>
+                                            </div>
+                                        </div>
+                                    ))}
                                 </div>
                             )}
                             {adminView === 'approved' && (
                                 <div>
                                     {approvedSubmissions.length > 0 && (
                                         <div className="bg-gradient-to-r from-green-50 to-blue-50 border-2 border-green-300 rounded-lg p-6 mb-6">
-                                            <h3 className="text-lg font-bold mb-4">{approvedSubmissions.length} items ready</h3>
-                                            <button onClick={handleProcess} disabled={processing} className="flex items-center space-x-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg disabled:bg-gray-400">
-                                                {processing ? '⟳' : '⬆️'} <span>{processing ? 'Uploading...' : 'Upload to Square & Generate Labels'}</span>
-                                            </button>
+                                            <h3 className="text-lg font-bold mb-4">{approvedSubmissions.length} items ready to upload</h3>
+                                            <button onClick={handleProcess} disabled={processing} className="flex items-center space-x-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg disabled:bg-gray-400">{processing ? '⟳' : '⬆️'} <span>{processing ? 'Uploading...' : 'Upload to Square'}</span></button>
                                         </div>
                                     )}
-                                    <div className="space-y-4">
-                                        {approvedSubmissions.length === 0 ? (
-                                            <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500">No items ready</div>
-                                        ) : (
-                                            approvedSubmissions.map(sub => (
-                                                <div key={sub.id} className="bg-white rounded-lg shadow p-6">
-                                                    <h3 className="text-xl font-bold">{sub.title}</h3>
-                                                    <p className="text-sm text-gray-600">by {sub.artistName} • {sub.category}</p>
-                                                </div>
-                                            ))
-                                        )}
-                                    </div>
+                                    <div className="space-y-4">{approvedSubmissions.length === 0 ? <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500">No items ready for upload</div> : approvedSubmissions.map(sub => (
+                                        <div key={sub.id} className="bg-white rounded-lg shadow p-6"><h3 className="text-xl font-bold">{sub.title}</h3><p className="text-sm text-gray-600">by {sub.artistName} • {sub.category}</p></div>
+                                    ))}</div>
+                                </div>
+                            )}
+                            {adminView === 'print' && (
+                                <div>
+                                    {processedSubmissions.length > 0 && (
+                                        <div className="bg-gradient-to-r from-purple-50 to-pink-50 border-2 border-purple-300 rounded-lg p-6 mb-6">
+                                            <h3 className="text-lg font-bold mb-4">🖨️ Print Labels for {processedSubmissions.length} items</h3>
+                                            <p className="text-sm text-gray-600 mb-4">Each button opens a print-ready window. Select the correct Dymo printer in the print dialog.</p>
+                                            <div className="flex flex-wrap gap-3">
+                                                <button onClick={() => printSKULabels(processedSubmissions)} className="flex items-center space-x-2 px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white font-semibold rounded-lg">🏷️ <span>Print All SKU Stickers</span></button>
+                                                <button onClick={() => printWallLabels(processedSubmissions)} className="flex items-center space-x-2 px-6 py-3 bg-pink-600 hover:bg-pink-700 text-white font-semibold rounded-lg">🖼️ <span>Print All Wall Labels</span></button>
+                                            </div>
+                                            <p className="text-xs text-gray-500 mt-4"><strong>Tip:</strong> SKU → Dymo 550 Turbo (1"x2⅛") | Wall → Dymo 550 (Business Card)</p>
+                                        </div>
+                                    )}
+                                    <div className="space-y-4">{processedSubmissions.length === 0 ? <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500">No processed items. Upload approved items first.</div> : processedSubmissions.map(sub => (
+                                        <div key={sub.id} className="bg-white rounded-lg shadow p-4 flex justify-between items-center">
+                                            <div><h3 className="font-bold">{sub.title}</h3><p className="text-sm text-gray-600">by {sub.artistName} • ${sub.price}</p><p className="text-xs text-gray-400">SKU: {sub.sku || sub.squareId || 'SKU-' + sub.id}</p></div>
+                                            <div className="flex space-x-2">
+                                                <button onClick={() => printSKULabels([sub])} className="px-3 py-1 bg-purple-100 hover:bg-purple-200 text-purple-700 text-sm rounded">🏷️ SKU</button>
+                                                <button onClick={() => printWallLabels([sub])} className="px-3 py-1 bg-pink-100 hover:bg-pink-200 text-pink-700 text-sm rounded">🖼️ Wall</button>
+                                            </div>
+                                        </div>
+                                    ))}</div>
                                 </div>
                             )}
                             {adminView === 'artists' && (
                                 <div>
-                                    <div className="flex justify-between mb-6">
+                                    <div className="flex justify-between items-center mb-6">
                                         <h2 className="text-2xl font-bold">Artist Management</h2>
-                                        <button onClick={() => setShowAddArtist(true)} className="flex items-center space-x-2 px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg">
-                                            ➕ <span>Add Artist</span>
-                                        </button>
+                                        <div className="flex space-x-3">
+                                            <button onClick={() => setShowPasswords(!showPasswords)} className={`flex items-center space-x-2 px-4 py-2 rounded-lg ${showPasswords ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-600'}`}>{showPasswords ? '🔒 Hide' : '👁️ Show'} Passwords</button>
+                                            <button onClick={() => setShowAddArtist(true)} className="flex items-center space-x-2 px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg">➕ <span>Add Artist</span></button>
+                                        </div>
                                     </div>
                                     {showAddArtist && (
                                         <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
                                             <h3 className="text-xl font-bold mb-4">Add New Artist</h3>
                                             <div className="grid grid-cols-2 gap-4 mb-4">
-                                                <div>
-                                                    <label className="block text-sm font-medium mb-1">First Name</label>
-                                                    <input type="text" value={newArtist.firstName} onChange={(e) => setNewArtist({ ...newArtist, firstName: e.target.value })} className="w-full px-3 py-2 border rounded-lg" />
-                                                </div>
-                                                <div>
-                                                    <label className="block text-sm font-medium mb-1">Last Name</label>
-                                                    <input type="text" value={newArtist.lastName} onChange={(e) => setNewArtist({ ...newArtist, lastName: e.target.value })} className="w-full px-3 py-2 border rounded-lg" />
-                                                </div>
+                                                <div><label className="block text-sm font-medium mb-1">First Name</label><input type="text" value={newArtist.firstName} onChange={(e) => setNewArtist({ ...newArtist, firstName: e.target.value })} className="w-full px-3 py-2 border rounded-lg" /></div>
+                                                <div><label className="block text-sm font-medium mb-1">Last Name</label><input type="text" value={newArtist.lastName} onChange={(e) => setNewArtist({ ...newArtist, lastName: e.target.value })} className="w-full px-3 py-2 border rounded-lg" /></div>
                                             </div>
                                             <div className="mb-4">
                                                 <label className="block text-sm font-medium mb-2">Type</label>
                                                 <div className="space-y-2">
-                                                    <label className="flex items-center"><input type="radio" checked={newArtist.type === 'coop'} onChange={() => setNewArtist({ ...newArtist, type: 'coop' })} className="mr-2" /><span>Co-op (20%)</span></label>
-                                                    <label className="flex items-center"><input type="radio" checked={newArtist.type === 'consignment'} onChange={() => setNewArtist({ ...newArtist, type: 'consignment' })} className="mr-2" /><span>Consignment (50%)</span></label>
-                                                    <label className="flex items-center"><input type="radio" checked={newArtist.type === 'special'} onChange={() => setNewArtist({ ...newArtist, type: 'special' })} className="mr-2" /><span>Special (custom)</span></label>
+                                                    <label className="flex items-center"><input type="radio" checked={newArtist.type === 'coop'} onChange={() => setNewArtist({ ...newArtist, type: 'coop' })} className="mr-2" />Co-op (20%)</label>
+                                                    <label className="flex items-center"><input type="radio" checked={newArtist.type === 'consignment'} onChange={() => setNewArtist({ ...newArtist, type: 'consignment' })} className="mr-2" />Consignment (50%)</label>
+                                                    <label className="flex items-center"><input type="radio" checked={newArtist.type === 'special'} onChange={() => setNewArtist({ ...newArtist, type: 'special' })} className="mr-2" />Special (custom)</label>
                                                 </div>
                                             </div>
-                                            {newArtist.type === 'special' && (
-                                                <div className="mb-4">
-                                                    <label className="block text-sm font-medium mb-1">Rate (%)</label>
-                                                    <input type="number" value={newArtist.customRate} onChange={(e) => setNewArtist({ ...newArtist, customRate: e.target.value })} className="w-full px-3 py-2 border rounded-lg" />
-                                                </div>
-                                            )}
+                                            {newArtist.type === 'special' && <div className="mb-4"><label className="block text-sm font-medium mb-1">Rate (%)</label><input type="number" value={newArtist.customRate} onChange={(e) => setNewArtist({ ...newArtist, customRate: e.target.value })} className="w-full px-3 py-2 border rounded-lg" /></div>}
                                             <div className="flex space-x-3">
                                                 <button onClick={handleAddArtist} disabled={!newArtist.firstName || !newArtist.lastName} className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg disabled:bg-gray-300">Create</button>
                                                 <button onClick={() => { setShowAddArtist(false); setNewArtist({ firstName: '', lastName: '', type: 'coop', customRate: '' }); }} className="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg">Cancel</button>
@@ -460,6 +430,8 @@
                                                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
                                                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Rate</th>
                                                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Username</th>
+                                                    {showPasswords && <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Password</th>}
+                                                    {showPasswords && <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>}
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-gray-200">
@@ -469,6 +441,8 @@
                                                         <td className="px-6 py-4 text-sm text-gray-600">{artist.type === 'coop' ? 'Co-op' : artist.type === 'consignment' ? 'Consignment' : 'Special'}</td>
                                                         <td className="px-6 py-4 text-sm text-gray-600">{artist.rate}%</td>
                                                         <td className="px-6 py-4 text-sm text-gray-600">{username}</td>
+                                                        {showPasswords && <td className="px-6 py-4 text-sm font-mono text-gray-600">{artist.password}</td>}
+                                                        {showPasswords && <td className="px-6 py-4"><button onClick={() => handleResetPassword(username)} className="text-sm px-3 py-1 bg-yellow-100 hover:bg-yellow-200 text-yellow-700 rounded">🔄 Reset</button></td>}
                                                     </tr>
                                                 ))}
                                             </tbody>
@@ -480,7 +454,6 @@
                     </div>
                 );
             }
-
             const userSubmissions = submissions.filter(s => s.artistUsername === currentUser.username);
             const myPending = userSubmissions.filter(s => s.status === 'pending');
             const myProcessed = userSubmissions.filter(s => s.status === 'processed');
@@ -490,17 +463,10 @@
                     {passwordModal}
                     <div className="bg-white shadow-sm">
                         <div className="max-w-4xl mx-auto px-4 py-4 flex justify-between items-center">
-                            <div>
-                                <h1 className="text-2xl font-bold text-gray-800">Welcome, {currentUser.name}!</h1>
-                                <p className="text-sm text-gray-600">Corrales Bosque Gallery Inventory Portal</p>
-                            </div>
+                            <div><h1 className="text-2xl font-bold text-gray-800">Welcome, {currentUser.name}!</h1><p className="text-sm text-gray-600">Corrales Bosque Gallery Inventory Portal</p></div>
                             <div className="flex items-center space-x-3">
-                                <button onClick={() => setShowPasswordChange(true)} className="flex items-center space-x-2 px-4 py-2 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-lg">
-                                    🔑 <span>Change Password</span>
-                                </button>
-                                <button onClick={handleLogout} className="flex items-center space-x-2 px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg">
-                                    🚪 <span>Logout</span>
-                                </button>
+                                <button onClick={() => setShowPasswordChange(true)} className="flex items-center space-x-2 px-4 py-2 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-lg">🔑 <span>Change Password</span></button>
+                                <button onClick={handleLogout} className="flex items-center space-x-2 px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg">🚪 <span>Logout</span></button>
                             </div>
                         </div>
                     </div>
@@ -518,23 +484,15 @@
                             <div className="mb-6 p-4 bg-gray-50 rounded-lg">
                                 <label className="block text-sm font-medium mb-3">Is this artwork:</label>
                                 <div className="space-y-2">
-                                    <label className="flex items-center cursor-pointer"><input type="radio" checked={isNewArtwork} onChange={() => setIsNewArtwork(true)} className="mr-3" /><span>Brand new artwork</span></label>
-                                    <label className="flex items-center cursor-pointer"><input type="radio" checked={!isNewArtwork} onChange={() => setIsNewArtwork(false)} className="mr-3" /><span>Variation of existing work</span></label>
+                                    <label className="flex items-center cursor-pointer"><input type="radio" checked={isNewArtwork} onChange={() => setIsNewArtwork(true)} className="mr-3" />Brand new artwork</label>
+                                    <label className="flex items-center cursor-pointer"><input type="radio" checked={!isNewArtwork} onChange={() => setIsNewArtwork(false)} className="mr-3" />Variation of existing work</label>
                                 </div>
                             </div>
                             <form onSubmit={handleSubmit} className="space-y-6">
                                 <div>
                                     <label className="block text-sm font-medium mb-1">Artwork Title *</label>
-                                    <input type="text" value={formData.title} onChange={(e) => setFormData({ ...formData, title: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500" required />
-                                    {duplicateWarning && (
-                                        <div className="mt-2 p-3 bg-yellow-50 border border-yellow-200 rounded-lg flex items-start">
-                                            ⚠️
-                                            <div className="ml-2 text-sm">
-                                                <p className="text-yellow-800 font-medium">Similar item found:</p>
-                                                <p className="text-yellow-700">"{duplicateWarning.title}" ({duplicateWarning.type})</p>
-                                            </div>
-                                        </div>
-                                    )}
+                                    <input type="text" value={formData.title} onChange={(e) => setFormData({ ...formData, title: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg" required />
+                                    {duplicateWarning && <div className="mt-2 p-3 bg-yellow-50 border border-yellow-200 rounded-lg flex items-start">⚠️<div className="ml-2 text-sm"><p className="text-yellow-800 font-medium">Similar item found:</p><p className="text-yellow-700">"{duplicateWarning.title}" ({duplicateWarning.type})</p></div></div>}
                                 </div>
                                 <div>
                                     <label className="block text-sm font-medium mb-1">Type *</label>
@@ -552,32 +510,18 @@
                                     <textarea value={formData.description} onChange={(e) => setFormData({ ...formData, description: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg" rows="3" />
                                 </div>
                                 <div className="grid grid-cols-2 gap-4">
-                                    <div>
-                                        <label className="block text-sm font-medium mb-1">Height (inches) *</label>
-                                        <input type="number" step="0.1" value={formData.height} onChange={(e) => setFormData({ ...formData, height: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg" required />
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium mb-1">Width (inches) *</label>
-                                        <input type="number" step="0.1" value={formData.width} onChange={(e) => setFormData({ ...formData, width: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg" required />
-                                    </div>
+                                    <div><label className="block text-sm font-medium mb-1">Height (inches) *</label><input type="number" step="0.1" value={formData.height} onChange={(e) => setFormData({ ...formData, height: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg" required /></div>
+                                    <div><label className="block text-sm font-medium mb-1">Width (inches) *</label><input type="number" step="0.1" value={formData.width} onChange={(e) => setFormData({ ...formData, width: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg" required /></div>
                                 </div>
                                 <div className="grid grid-cols-2 gap-4">
-                                    <div>
-                                        <label className="block text-sm font-medium mb-1">Price ($) *</label>
-                                        <input type="number" step="0.01" value={formData.price} onChange={(e) => setFormData({ ...formData, price: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg" required />
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium mb-1">Quantity *</label>
-                                        <input type="number" min="1" value={formData.quantity} onChange={(e) => setFormData({ ...formData, quantity: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg" required />
-                                    </div>
+                                    <div><label className="block text-sm font-medium mb-1">Price ($) *</label><input type="number" step="0.01" value={formData.price} onChange={(e) => setFormData({ ...formData, price: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg" required /></div>
+                                    <div><label className="block text-sm font-medium mb-1">Quantity *</label><input type="number" min="1" value={formData.quantity} onChange={(e) => setFormData({ ...formData, quantity: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg" required /></div>
                                 </div>
                                 <div>
                                     <label className="block text-sm font-medium mb-1">Discounts</label>
                                     <input type="text" value={formData.discounts} onChange={(e) => setFormData({ ...formData, discounts: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="e.g., 10% for members" />
                                 </div>
-                                <button type="submit" className="w-full bg-orange-600 hover:bg-orange-700 text-white font-semibold py-3 rounded-lg transition flex items-center justify-center space-x-2">
-                                    📦 <span>Submit Artwork</span>
-                                </button>
+                                <button type="submit" className="w-full bg-orange-600 hover:bg-orange-700 text-white font-semibold py-3 rounded-lg flex items-center justify-center space-x-2">📦 <span>Submit Artwork</span></button>
                             </form>
                         </div>
                         {userSubmissions.length > 0 && (
@@ -588,9 +532,7 @@
                                         <div key={sub.id} className="border border-gray-200 rounded-lg p-4">
                                             <div className="flex justify-between mb-2">
                                                 <h3 className="font-bold">{sub.title}</h3>
-                                                <span className={`px-3 py-1 text-xs rounded-full ${sub.status === 'pending' ? 'bg-yellow-100 text-yellow-800' : sub.status === 'processed' ? 'bg-blue-100 text-blue-800' : 'bg-red-100 text-red-800'}`}>
-                                                    {sub.status === 'pending' ? '⏳ Pending' : sub.status === 'processed' ? '✓ Live' : '✗ Rejected'}
-                                                </span>
+                                                <span className={`px-3 py-1 text-xs rounded-full ${sub.status === 'pending' ? 'bg-yellow-100 text-yellow-800' : sub.status === 'processed' ? 'bg-blue-100 text-blue-800' : 'bg-red-100 text-red-800'}`}>{sub.status === 'pending' ? '⏳ Pending' : sub.status === 'processed' ? '✓ Live' : '✗ Rejected'}</span>
                                             </div>
                                             <div className="text-sm text-gray-600 grid grid-cols-2 gap-2">
                                                 <div>{sub.type} - {sub.medium}</div>
