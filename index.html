@@ -40,6 +40,30 @@
 
         const ARTWORK_TYPES = ['Painting', 'Drawing', 'Print', 'Card', 'Ornaments', 'Photography', 'Ceramics', 'Glass', 'Jewelry', 'Mixed Media', 'Wood', 'Books'];
 
+        // KV Storage helper functions
+        const kvGet = async (key) => {
+            try {
+                const response = await fetch(`/api/kv?key=${key}`);
+                const data = await response.json();
+                return data.value ? JSON.parse(data.value) : null;
+            } catch (error) {
+                console.error('KV Get Error:', error);
+                return null;
+            }
+        };
+
+        const kvSet = async (key, value) => {
+            try {
+                await fetch('/api/kv', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ key, value: JSON.stringify(value) })
+                });
+            } catch (error) {
+                console.error('KV Set Error:', error);
+            }
+        };
+
         function InventoryPortal() {
             const [currentUser, setCurrentUser] = useState(null);
             const [loginForm, setLoginForm] = useState({ username: '', password: '', showPassword: false });
@@ -57,22 +81,31 @@
             const [passwordForm, setPasswordForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
             const [passwordError, setPasswordError] = useState('');
             const [showPasswords, setShowPasswords] = useState(false);
+            const [loading, setLoading] = useState(true);
 
+            // Load data from KV on startup
             useEffect(() => {
-                const saved = localStorage.getItem('cbg-submissions');
-                if (saved) try { setSubmissions(JSON.parse(saved)); } catch (e) {}
-                const savedArtists = localStorage.getItem('cbg-artists');
-                if (savedArtists) try { setArtistsDb(JSON.parse(savedArtists)); } catch (e) {}
+                const loadData = async () => {
+                    setLoading(true);
+                    const [savedSubmissions, savedArtists] = await Promise.all([
+                        kvGet('cbg-submissions'),
+                        kvGet('cbg-artists')
+                    ]);
+                    if (savedSubmissions) setSubmissions(savedSubmissions);
+                    if (savedArtists) setArtistsDb(savedArtists);
+                    setLoading(false);
+                };
+                loadData();
             }, []);
 
-            const saveSubmissions = (newSubmissions) => {
+            const saveSubmissions = async (newSubmissions) => {
                 setSubmissions(newSubmissions);
-                localStorage.setItem('cbg-submissions', JSON.stringify(newSubmissions));
+                await kvSet('cbg-submissions', newSubmissions);
             };
 
-            const saveArtists = (newArtists) => {
+            const saveArtists = async (newArtists) => {
                 setArtistsDb(newArtists);
-                localStorage.setItem('cbg-artists', JSON.stringify(newArtists));
+                await kvSet('cbg-artists', newArtists);
             };
 
             const handleLogin = (e) => {
@@ -97,7 +130,7 @@
                 setPasswordError('');
             };
 
-            const handlePasswordChange = (e) => {
+            const handlePasswordChange = async (e) => {
                 e.preventDefault();
                 setPasswordError('');
                 if (passwordForm.currentPassword !== currentUser.password) {
@@ -119,20 +152,20 @@
                         password: passwordForm.newPassword
                     }
                 };
-                saveArtists(updatedArtists);
+                await saveArtists(updatedArtists);
                 setCurrentUser({ ...currentUser, password: passwordForm.newPassword });
                 setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
                 setShowPasswordChange(false);
                 alert('Password changed successfully!');
             };
 
-            const handleResetPassword = (username) => {
+            const handleResetPassword = async (username) => {
                 const newPassword = Math.random().toString(36).slice(-8);
                 const updatedArtists = {
                     ...artistsDb,
                     [username]: { ...artistsDb[username], password: newPassword }
                 };
-                saveArtists(updatedArtists);
+                await saveArtists(updatedArtists);
                 alert(`Password reset for ${artistsDb[username].name}!\n\nNew password: ${newPassword}\n\nPlease share this with the artist.`);
             };
 
@@ -181,8 +214,7 @@
                 </style></head><body>${labelsHTML}<script>window.onload=function(){window.print();}<\/script></body></html>`);
                 printWindow.document.close();
             };
-            useEffect(() => {
-                if (formData.title && currentUser && isNewArtwork) {
+                            if (formData.title && currentUser && isNewArtwork) {
                     const userSubmissions = submissions.filter(s => s.artistName === currentUser.name);
                     const similar = userSubmissions.find(s => s.title.toLowerCase().includes(formData.title.toLowerCase()) || formData.title.toLowerCase().includes(s.title.toLowerCase()));
                     if (similar && formData.title.length > 3) setDuplicateWarning(similar);
@@ -190,7 +222,7 @@
                 }
             }, [formData.title, currentUser, isNewArtwork, submissions]);
 
-            const handleSubmit = (e) => {
+            const handleSubmit = async (e) => {
                 e.preventDefault();
                 const newSubmission = {
                     id: Date.now(),
@@ -205,15 +237,15 @@
                     submittedAt: new Date().toISOString(),
                     isVariation: !isNewArtwork
                 };
-                saveSubmissions([...submissions, newSubmission]);
+                await saveSubmissions([...submissions, newSubmission]);
                 setFormData({ title: '', type: '', medium: '', description: '', height: '', width: '', price: '', quantity: '1', discounts: '' });
                 setIsNewArtwork(true);
                 setDuplicateWarning(null);
                 alert('Artwork submitted successfully! Pending admin approval.');
             };
 
-            const handleApprove = (id) => saveSubmissions(submissions.map(s => s.id === id ? { ...s, status: 'approved' } : s));
-            const handleReject = (id, reason) => saveSubmissions(submissions.map(s => s.id === id ? { ...s, status: 'rejected', rejectionReason: reason } : s));
+            const handleApprove = async (id) => await saveSubmissions(submissions.map(s => s.id === id ? { ...s, status: 'approved' } : s));
+            const handleReject = async (id, reason) => await saveSubmissions(submissions.map(s => s.id === id ? { ...s, status: 'rejected', rejectionReason: reason } : s));
 
             const handleProcess = async () => {
                 const toProcess = submissions.filter(s => s.status === 'approved');
@@ -228,7 +260,7 @@
                             const match = result.results.find(r => r.originalId === s.id);
                             return match ? { ...s, status: 'processed', processedAt: new Date().toISOString(), squareId: match.squareId, sku: match.sku } : s;
                         });
-                        saveSubmissions(updated);
+                        await saveSubmissions(updated);
                         alert(`✅ Success! ${toProcess.length} items uploaded.\n\nGo to "Print Labels" tab to print.`);
                     } else throw new Error(result.error || 'Upload failed');
                 } catch (error) {
@@ -236,11 +268,11 @@
                 } finally { setProcessing(false); }
             };
 
-            const handleAddArtist = () => {
+            const handleAddArtist = async () => {
                 const username = `${newArtist.firstName.toLowerCase()}.${newArtist.lastName.toLowerCase()}`.replace(/\s/g, '-');
                 const rate = newArtist.type === 'coop' ? 20 : newArtist.type === 'consignment' ? 50 : parseInt(newArtist.customRate);
                 const password = Math.random().toString(36).slice(-8);
-                saveArtists({ ...artistsDb, [username]: { name: `${newArtist.firstName} ${newArtist.lastName}`, type: newArtist.type, rate, password, active: true } });
+                await saveArtists({ ...artistsDb, [username]: { name: `${newArtist.firstName} ${newArtist.lastName}`, type: newArtist.type, rate, password, active: true } });
                 alert(`Artist added!\n\nUsername: ${username}\nPassword: ${password}`);
                 setShowAddArtist(false);
                 setNewArtist({ firstName: '', lastName: '', type: 'coop', customRate: '' });
@@ -273,6 +305,17 @@
                     </div>
                 </div>
             ) : null;
+
+            if (loading) {
+                return (
+                    <div className="min-h-screen bg-gradient-to-br from-amber-50 to-orange-100 flex items-center justify-center">
+                        <div className="text-center">
+                            <div className="text-4xl mb-4">🎨</div>
+                            <div className="text-xl text-gray-600">Loading Gallery Portal...</div>
+                        </div>
+                    </div>
+                );
+            }
 
             if (!currentUser) {
                 return (
@@ -453,8 +496,8 @@
                         </div>
                     </div>
                 );
-            }
-            const userSubmissions = submissions.filter(s => s.artistUsername === currentUser.username);
+            } 
+        const userSubmissions = submissions.filter(s => s.artistUsername === currentUser.username);
             const myPending = userSubmissions.filter(s => s.status === 'pending');
             const myProcessed = userSubmissions.filter(s => s.status === 'processed');
 
