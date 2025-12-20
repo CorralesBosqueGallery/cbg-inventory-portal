@@ -214,7 +214,8 @@
                 </style></head><body>${labelsHTML}<script>window.onload=function(){window.print();}<\/script></body></html>`);
                  printWindow.document.close();
             };
-                            if (formData.title && currentUser && isNewArtwork) {
+            useEffect(() => {                
+            if (formData.title && currentUser && isNewArtwork) {
                     const userSubmissions = submissions.filter(s => s.artistName === currentUser.name);
                     const similar = userSubmissions.find(s => s.title.toLowerCase().includes(formData.title.toLowerCase()) || formData.title.toLowerCase().includes(s.title.toLowerCase()));
                     if (similar && formData.title.length > 3) setDuplicateWarning(similar);
