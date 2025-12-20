@@ -92,7 +92,7 @@
                         kvGet('cbg-artists')
                     ]);
                     if (Array.isArray(savedSubmissions)) setSubmissions(savedSubmissions);
-                    if (savedArtists) setArtistsDb(savedArtists);
+                    if (savedArtists && typeof savedArtists === 'object') setArtistsDb(savedArtists);
                     setLoading(false);
                 };
                 loadData();
