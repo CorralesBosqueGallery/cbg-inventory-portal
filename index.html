@@ -54,13 +54,21 @@
 
         const kvSet = async (key, value) => {
             try {
-                await fetch('/api/kv', {
+                const response = await fetch('/api/kv', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ key, value: JSON.stringify(value) })
                 });
+                const result = await response.json();
+                if (!result.success) {
+                    console.error('KV Save failed:', result);
+                    alert('Warning: Failed to save data. Your changes may not persist.');
+                }
+                return result.success;
             } catch (error) {
                 console.error('KV Set Error:', error);
+                alert('Warning: Failed to save data. Your changes may not persist.');
+                return false;
             }
         };
 
