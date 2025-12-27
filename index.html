@@ -82,6 +82,10 @@
             const [passwordError, setPasswordError] = useState('');
             const [showPasswords, setShowPasswords] = useState(false);
             const [loading, setLoading] = useState(true);
+            const [editingSubmission, setEditingSubmission] = useState(null);
+            const [editForm, setEditForm] = useState({ title: '', type: '', medium: '', description: '', height: '', width: '', price: '', quantity: '1', discounts: '' });
+            const [showEditArtist, setShowEditArtist] = useState(null);
+            const [editArtistForm, setEditArtistForm] = useState({ name: '', type: '', rate: '' });
 
             // Load data from KV on startup
             useEffect(() => {
@@ -279,6 +283,73 @@
                 setNewArtist({ firstName: '', lastName: '', type: 'coop', customRate: '' });
             };
 
+            // Edit submission functions
+            const startEditSubmission = (sub) => {
+                const [height, width] = sub.dimensions ? sub.dimensions.replace(/"/g, '').split(' x ').map(d => d.trim()) : ['', ''];
+                setEditForm({
+                    title: sub.title || '',
+                    type: sub.type || '',
+                    medium: sub.medium || '',
+                    description: sub.description || '',
+                    height: height || '',
+                    width: width || '',
+                    price: sub.price || '',
+                    quantity: sub.quantity || '1',
+                    discounts: sub.discounts || ''
+                });
+                setEditingSubmission(sub);
+            };
+
+            const handleEditSubmission = async (e) => {
+                e.preventDefault();
+                const updatedSubmission = {
+                    ...editingSubmission,
+                    ...editForm,
+                    dimensions: `${editForm.height}" x ${editForm.width}"`,
+                    category: `${editingSubmission.artistName} - ${editForm.type}`,
+                    lastModified: new Date().toISOString(),
+                    // If it was rejected or processed, set back to pending for review
+                    status: editingSubmission.status === 'processed' ? 'pending-update' : editingSubmission.status === 'rejected' ? 'pending' : editingSubmission.status
+                };
+                const updatedSubmissions = submissions.map(s => s.id === editingSubmission.id ? updatedSubmission : s);
+                await saveSubmissions(updatedSubmissions);
+                setEditingSubmission(null);
+                setEditForm({ title: '', type: '', medium: '', description: '', height: '', width: '', price: '', quantity: '1', discounts: '' });
+                if (editingSubmission.status === 'processed') {
+                    alert('Changes saved! Since this item is already live in Square, your changes are pending admin review to sync.');
+                } else {
+                    alert('Changes saved successfully!');
+                }
+            };
+
+            // Edit artist functions (admin)
+            const startEditArtist = (username, artist) => {
+                setEditArtistForm({
+                    name: artist.name,
+                    type: artist.type,
+                    rate: artist.rate.toString()
+                });
+                setShowEditArtist(username);
+            };
+
+            const handleEditArtist = async (e) => {
+                e.preventDefault();
+                const updatedArtists = {
+                    ...artistsDb,
+                    [showEditArtist]: {
+                        ...artistsDb[showEditArtist],
+                        name: editArtistForm.name,
+                        type: editArtistForm.type,
+                        rate: parseInt(editArtistForm.rate)
+                    }
+                };
+                await saveArtists(updatedArtists);
+                setShowEditArtist(null);
+                alert('Artist information updated!');
+            };
+
+            const [showPasswordFields, setShowPasswordFields] = useState(false);
+            
             const passwordModal = showPasswordChange ? (
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
                     <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md mx-4">
@@ -286,21 +357,116 @@
                         <form onSubmit={handlePasswordChange} className="space-y-4">
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">Current Password</label>
-                                <input type="password" value={passwordForm.currentPassword} onChange={(e) => setPasswordForm({ ...passwordForm, currentPassword: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg" required />
+                                <div className="relative">
+                                    <input type={showPasswordFields ? 'text' : 'password'} value={passwordForm.currentPassword} onChange={(e) => setPasswordForm({ ...passwordForm, currentPassword: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg pr-10" required />
+                                </div>
                             </div>
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">New Password</label>
-                                <input type="password" value={passwordForm.newPassword} onChange={(e) => setPasswordForm({ ...passwordForm, newPassword: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg" required minLength={6} />
+                                <div className="relative">
+                                    <input type={showPasswordFields ? 'text' : 'password'} value={passwordForm.newPassword} onChange={(e) => setPasswordForm({ ...passwordForm, newPassword: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg pr-10" required minLength={6} />
+                                </div>
                                 <p className="text-xs text-gray-500 mt-1">Minimum 6 characters</p>
                             </div>
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">Confirm New Password</label>
-                                <input type="password" value={passwordForm.confirmPassword} onChange={(e) => setPasswordForm({ ...passwordForm, confirmPassword: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg" required />
+                                <div className="relative">
+                                    <input type={showPasswordFields ? 'text' : 'password'} value={passwordForm.confirmPassword} onChange={(e) => setPasswordForm({ ...passwordForm, confirmPassword: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg pr-10" required />
+                                </div>
+                            </div>
+                            <div className="flex items-center">
+                                <button type="button" onClick={() => setShowPasswordFields(!showPasswordFields)} className="flex items-center space-x-2 text-sm text-gray-600 hover:text-gray-800">
+                                    {showPasswordFields ? '🔒' : '👁️'} <span>{showPasswordFields ? 'Hide passwords' : 'Show passwords'}</span>
+                                </button>
                             </div>
                             {passwordError && <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">⚠️ {passwordError}</div>}
                             <div className="flex space-x-3 pt-2">
                                 <button type="submit" className="flex-1 bg-orange-600 hover:bg-orange-700 text-white font-semibold py-2 rounded-lg">Update Password</button>
-                                <button type="button" onClick={() => { setShowPasswordChange(false); setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' }); setPasswordError(''); }} className="flex-1 bg-gray-200 hover:bg-gray-300 font-semibold py-2 rounded-lg">Cancel</button>
+                                <button type="button" onClick={() => { setShowPasswordChange(false); setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' }); setPasswordError(''); setShowPasswordFields(false); }} className="flex-1 bg-gray-200 hover:bg-gray-300 font-semibold py-2 rounded-lg">Cancel</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            ) : null;
+
+            // Edit submission modal
+            const editModal = editingSubmission ? (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+                        <h3 className="text-xl font-bold mb-4">Edit Artwork: {editingSubmission.title}</h3>
+                        {editingSubmission.status === 'processed' && (
+                            <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-800">
+                                ⚠️ This item is already live in Square. Changes will need admin approval to sync.
+                            </div>
+                        )}
+                        <form onSubmit={handleEditSubmission} className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium mb-1">Artwork Title *</label>
+                                <input type="text" value={editForm.title} onChange={(e) => setEditForm({ ...editForm, title: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg" required />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium mb-1">Type *</label>
+                                <select value={editForm.type} onChange={(e) => setEditForm({ ...editForm, type: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
+                                    <option value="">Select...</option>
+                                    {ARTWORK_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium mb-1">Medium *</label>
+                                <input type="text" value={editForm.medium} onChange={(e) => setEditForm({ ...editForm, medium: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg" required />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium mb-1">Description</label>
+                                <textarea value={editForm.description} onChange={(e) => setEditForm({ ...editForm, description: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg" rows="3" />
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div><label className="block text-sm font-medium mb-1">Height (inches) *</label><input type="number" step="0.1" value={editForm.height} onChange={(e) => setEditForm({ ...editForm, height: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg" required /></div>
+                                <div><label className="block text-sm font-medium mb-1">Width (inches) *</label><input type="number" step="0.1" value={editForm.width} onChange={(e) => setEditForm({ ...editForm, width: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg" required /></div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div><label className="block text-sm font-medium mb-1">Price ($) *</label><input type="number" step="0.01" value={editForm.price} onChange={(e) => setEditForm({ ...editForm, price: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg" required /></div>
+                                <div><label className="block text-sm font-medium mb-1">Quantity *</label><input type="number" min="1" value={editForm.quantity} onChange={(e) => setEditForm({ ...editForm, quantity: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg" required /></div>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium mb-1">Discounts</label>
+                                <input type="text" value={editForm.discounts} onChange={(e) => setEditForm({ ...editForm, discounts: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg" />
+                            </div>
+                            <div className="flex space-x-3 pt-4">
+                                <button type="submit" className="flex-1 bg-orange-600 hover:bg-orange-700 text-white font-semibold py-2 rounded-lg">💾 Save Changes</button>
+                                <button type="button" onClick={() => { setEditingSubmission(null); setEditForm({ title: '', type: '', medium: '', description: '', height: '', width: '', price: '', quantity: '1', discounts: '' }); }} className="flex-1 bg-gray-200 hover:bg-gray-300 font-semibold py-2 rounded-lg">Cancel</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            ) : null;
+
+            // Edit artist modal (admin)
+            const editArtistModal = showEditArtist ? (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md">
+                        <h3 className="text-xl font-bold mb-4">Edit Artist: {artistsDb[showEditArtist]?.name}</h3>
+                        <form onSubmit={handleEditArtist} className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium mb-1">Name</label>
+                                <input type="text" value={editArtistForm.name} onChange={(e) => setEditArtistForm({ ...editArtistForm, name: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg" required />
+                                <p className="text-xs text-gray-500 mt-1">Fix spelling errors here</p>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium mb-1">Type</label>
+                                <select value={editArtistForm.type} onChange={(e) => setEditArtistForm({ ...editArtistForm, type: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
+                                    <option value="coop">Co-op Member</option>
+                                    <option value="consignment">Consignment</option>
+                                    <option value="special">Special</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium mb-1">Commission Rate (%)</label>
+                                <input type="number" min="0" max="100" value={editArtistForm.rate} onChange={(e) => setEditArtistForm({ ...editArtistForm, rate: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg" required />
+                                <p className="text-xs text-gray-500 mt-1">Co-op: 20%, Consignment: 50%</p>
+                            </div>
+                            <div className="flex space-x-3 pt-4">
+                                <button type="submit" className="flex-1 bg-orange-600 hover:bg-orange-700 text-white font-semibold py-2 rounded-lg">💾 Save Changes</button>
+                                <button type="button" onClick={() => setShowEditArtist(null)} className="flex-1 bg-gray-200 hover:bg-gray-300 font-semibold py-2 rounded-lg">Cancel</button>
                             </div>
                         </form>
                     </div>
@@ -357,6 +523,7 @@
                 return (
                     <div className="min-h-screen bg-gray-50">
                         {passwordModal}
+                        {editArtistModal}
                         <div className="bg-white shadow-sm border-b">
                             <div className="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
                                 <div><h1 className="text-2xl font-bold text-gray-800">Admin Dashboard</h1><p className="text-sm text-gray-600">Corrales Bosque Gallery</p></div>
@@ -475,7 +642,7 @@
                                                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Rate</th>
                                                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Username</th>
                                                     {showPasswords && <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Password</th>}
-                                                    {showPasswords && <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>}
+                                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-gray-200">
@@ -486,7 +653,10 @@
                                                         <td className="px-6 py-4 text-sm text-gray-600">{artist.rate}%</td>
                                                         <td className="px-6 py-4 text-sm text-gray-600">{username}</td>
                                                         {showPasswords && <td className="px-6 py-4 text-sm font-mono text-gray-600">{artist.password}</td>}
-                                                        {showPasswords && <td className="px-6 py-4"><button onClick={() => handleResetPassword(username)} className="text-sm px-3 py-1 bg-yellow-100 hover:bg-yellow-200 text-yellow-700 rounded">🔄 Reset</button></td>}
+                                                        <td className="px-6 py-4 flex space-x-2">
+                                                            <button onClick={() => startEditArtist(username, artist)} className="text-sm px-3 py-1 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded">✏️ Edit</button>
+                                                            {showPasswords && <button onClick={() => handleResetPassword(username)} className="text-sm px-3 py-1 bg-yellow-100 hover:bg-yellow-200 text-yellow-700 rounded">🔄 Reset PW</button>}
+                                                        </td>
                                                     </tr>
                                                 ))}
                                             </tbody>
@@ -505,6 +675,7 @@
             return (
                 <div className="min-h-screen bg-gradient-to-br from-amber-50 to-orange-100">
                     {passwordModal}
+                    {editModal}
                     <div className="bg-white shadow-sm">
                         <div className="max-w-4xl mx-auto px-4 py-4 flex justify-between items-center">
                             <div><h1 className="text-2xl font-bold text-gray-800">Welcome, {currentUser.name}!</h1><p className="text-sm text-gray-600">Corrales Bosque Gallery Inventory Portal</p></div>
@@ -576,13 +747,30 @@
                                         <div key={sub.id} className="border border-gray-200 rounded-lg p-4">
                                             <div className="flex justify-between mb-2">
                                                 <h3 className="font-bold">{sub.title}</h3>
-                                                <span className={`px-3 py-1 text-xs rounded-full ${sub.status === 'pending' ? 'bg-yellow-100 text-yellow-800' : sub.status === 'processed' ? 'bg-blue-100 text-blue-800' : 'bg-red-100 text-red-800'}`}>{sub.status === 'pending' ? '⏳ Pending' : sub.status === 'processed' ? '✓ Live' : '✗ Rejected'}</span>
+                                                <span className={`px-3 py-1 text-xs rounded-full ${sub.status === 'pending' ? 'bg-yellow-100 text-yellow-800' : sub.status === 'processed' ? 'bg-blue-100 text-blue-800' : sub.status === 'approved' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>{sub.status === 'pending' ? '⏳ Pending' : sub.status === 'processed' ? '✓ Live' : sub.status === 'approved' ? '✓ Approved' : '✗ Rejected'}</span>
                                             </div>
                                             <div className="text-sm text-gray-600 grid grid-cols-2 gap-2">
                                                 <div>{sub.type} - {sub.medium}</div>
                                                 <div>{sub.dimensions}</div>
                                                 <div>${sub.price}</div>
                                                 {sub.sku && <div>SKU: {sub.sku}</div>}
+                                            </div>
+                                            {sub.status === 'rejected' && sub.rejectionReason && (
+                                                <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg">
+                                                    <p className="text-sm font-medium text-red-800">❌ Rejection Reason:</p>
+                                                    <p className="text-sm text-red-700">{sub.rejectionReason}</p>
+                                                    <p className="text-xs text-red-600 mt-2">Please address this issue and resubmit your artwork.</p>
+                                                </div>
+                                            )}
+                                            {sub.status === 'pending-update' && (
+                                                <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                                                    <p className="text-sm text-yellow-800">⏳ Your changes are pending admin approval to sync with Square.</p>
+                                                </div>
+                                            )}
+                                            <div className="mt-3 flex justify-end">
+                                                <button onClick={() => startEditSubmission(sub)} className="px-4 py-2 bg-blue-100 hover:bg-blue-200 text-blue-700 text-sm rounded-lg flex items-center space-x-1">
+                                                    ✏️ <span>Edit</span>
+                                                </button>
                                             </div>
                                         </div>
                                     ))}
