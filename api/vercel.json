@@ -1,0 +1,9 @@
+{
+  "buildCommand": null,
+  "outputDirectory": ".",
+  "functions": {
+    "api/square-upload.js": {
+      "maxDuration": 10
+    }
+  }
+}
