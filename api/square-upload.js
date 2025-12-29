@@ -13,9 +13,9 @@ module.exports = async (req, res) => {
       throw new Error('Square credentials not configured');
     }
 
-    // Cache for category IDs and vendor IDs we've already created/found
+    // Cache for category IDs and reporting category IDs
     const categoryCache = {};
-    const vendorCache = {};
+    const reportingCategoryCache = {};
 
     // Helper function to generate SKU
     const generateSKU = (artistName, itemId) => {
@@ -29,14 +29,14 @@ module.exports = async (req, res) => {
       return `CBG-${initials}-${timestamp}`;
     };
 
-    // Helper function to get or create vendor (artist)
-    const getOrCreateVendor = async (artistName) => {
-      if (vendorCache[artistName]) {
-        return vendorCache[artistName];
+    // Helper function to get or create reporting category (artist name)
+    const getOrCreateReportingCategory = async (artistName) => {
+      if (reportingCategoryCache[artistName]) {
+        return reportingCategoryCache[artistName];
       }
 
-      // Search for existing vendor
-      const searchResponse = await fetch('https://connect.squareup.com/v2/vendors/search', {
+      // Search for existing category with artist name
+      const searchResponse = await fetch('https://connect.squareup.com/v2/catalog/search', {
         method: 'POST',
         headers: {
           'Square-Version': '2024-12-18',
@@ -44,22 +44,26 @@ module.exports = async (req, res) => {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          filter: {
-            name: [artistName]
+          object_types: ['CATEGORY'],
+          query: {
+            exact_query: {
+              attribute_name: 'name',
+              attribute_value: artistName
+            }
           }
         })
       });
 
       const searchData = await searchResponse.json();
 
-      if (searchData.vendors && searchData.vendors.length > 0) {
-        // Vendor exists
-        vendorCache[artistName] = searchData.vendors[0].id;
-        return searchData.vendors[0].id;
+      if (searchData.objects && searchData.objects.length > 0) {
+        // Category exists
+        reportingCategoryCache[artistName] = searchData.objects[0].id;
+        return searchData.objects[0].id;
       }
 
-      // Create new vendor
-      const vendorResponse = await fetch('https://connect.squareup.com/v2/vendors/bulk-create', {
+      // Create new category for artist (reporting category)
+      const categoryResponse = await fetch('https://connect.squareup.com/v2/catalog/object', {
         method: 'POST',
         headers: {
           'Square-Version': '2024-12-18',
@@ -67,28 +71,29 @@ module.exports = async (req, res) => {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          vendors: {
-            [artistName]: {
-              name: artistName,
-              status: 'ACTIVE'
+          idempotency_key: `reporting-category-${artistName}-${Date.now()}`,
+          object: {
+            type: 'CATEGORY',
+            id: `#reporting-category-${artistName.replace(/\s+/g, '-')}`,
+            category_data: {
+              name: artistName
             }
           }
         })
       });
 
-      const vendorData = await vendorResponse.json();
+      const categoryData = await categoryResponse.json();
 
-      if (!vendorResponse.ok) {
-        console.error('Vendor creation error:', vendorData);
-        // Don't throw - we can still create the item without vendor
+      if (!categoryResponse.ok) {
+        console.error('Reporting category creation error:', categoryData);
         return null;
       }
 
-      const vendorId = vendorData.responses?.[artistName]?.vendor?.id;
-      if (vendorId) {
-        vendorCache[artistName] = vendorId;
+      const categoryId = categoryData.catalog_object?.id;
+      if (categoryId) {
+        reportingCategoryCache[artistName] = categoryId;
       }
-      return vendorId;
+      return categoryId;
     };
 
     for (const item of items) {
@@ -96,10 +101,10 @@ module.exports = async (req, res) => {
       const dimensions = `${item.height}" x ${item.width}"`;
       const sku = generateSKU(item.artistName, item.id);
 
-      // Step 1: Get or create the vendor (artist)
-      const vendorId = await getOrCreateVendor(item.artistName);
+      // Step 1: Get or create the reporting category (artist name only)
+      const reportingCategoryId = await getOrCreateReportingCategory(item.artistName);
 
-      // Step 2: Get or create the category
+      // Step 2: Get or create the regular category (Artist - Type)
       let categoryId = categoryCache[categoryName];
       
       if (!categoryId) {
@@ -162,7 +167,7 @@ module.exports = async (req, res) => {
         categoryCache[categoryName] = categoryId;
       }
 
-      // Step 3: Create the item with the category ID, SKU, and vendor
+      // Step 3: Create the item with the category ID, SKU, and reporting category
       const itemVariationData = {
         name: 'Regular',
         pricing_type: 'FIXED_PRICING',
@@ -180,10 +185,23 @@ module.exports = async (req, res) => {
         ]
       };
 
-      // Add vendor info if we have it
-      if (vendorId) {
-        itemVariationData.item_option_values = [];
-        itemVariationData.service_duration = null;
+      // Build item_data with reporting_category if available
+      const itemDataContent = {
+        name: item.title,
+        description: `${item.description || ''}\n\nMedium: ${item.medium}\nDimensions: ${dimensions}\nArtist: ${item.artistName}${item.discounts ? '\nDiscounts: ' + item.discounts : ''}`.trim(),
+        categories: [{ id: categoryId }],
+        variations: [
+          {
+            type: 'ITEM_VARIATION',
+            id: `#variation-${item.id}`,
+            item_variation_data: itemVariationData
+          }
+        ]
+      };
+
+      // Add reporting category (artist name) if we have it
+      if (reportingCategoryId) {
+        itemDataContent.reporting_category = { id: reportingCategoryId };
       }
 
       const itemData = {
@@ -191,18 +209,7 @@ module.exports = async (req, res) => {
         object: {
           type: 'ITEM',
           id: `#item-${item.id}`,
-          item_data: {
-            name: item.title,
-            description: `${item.description || ''}\n\nMedium: ${item.medium}\nDimensions: ${dimensions}\nArtist: ${item.artistName}${item.discounts ? '\nDiscounts: ' + item.discounts : ''}`.trim(),
-            categories: [{ id: categoryId }],
-            variations: [
-              {
-                type: 'ITEM_VARIATION',
-                id: `#variation-${item.id}`,
-                item_variation_data: itemVariationData
-              }
-            ]
-          }
+          item_data: itemDataContent
         }
       };
 
@@ -225,40 +232,7 @@ module.exports = async (req, res) => {
 
       const variationId = data.catalog_object?.item_data?.variations?.[0]?.id;
 
-      // Step 4: Link vendor to item variation (if vendor exists)
-      if (vendorId && variationId) {
-        try {
-          const vendorInfoResponse = await fetch('https://connect.squareup.com/v2/catalog/object', {
-            method: 'POST',
-            headers: {
-              'Square-Version': '2024-12-18',
-              'Authorization': `Bearer ${SQUARE_ACCESS_TOKEN}`,
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-              idempotency_key: `vendor-info-${item.id}-${Date.now()}`,
-              object: {
-                type: 'ITEM_VENDOR_INFO',
-                id: `#vendor-info-${item.id}`,
-                item_vendor_info_data: {
-                  item_variation_id: variationId,
-                  vendor_id: vendorId
-                }
-              }
-            })
-          });
-
-          if (!vendorInfoResponse.ok) {
-            const vendorInfoError = await vendorInfoResponse.json();
-            console.error('Vendor link error:', vendorInfoError);
-            // Don't throw - item was created, just vendor link failed
-          }
-        } catch (vendorLinkErr) {
-          console.error('Vendor link exception:', vendorLinkErr);
-        }
-      }
-
-      // Step 5: Set initial inventory count
+      // Step 4: Set initial inventory count
       if (variationId && item.quantity) {
         const inventoryResponse = await fetch('https://connect.squareup.com/v2/inventory/changes/batch-create', {
           method: 'POST',
@@ -299,7 +273,8 @@ module.exports = async (req, res) => {
         sku: sku,
         category: categoryName,
         categoryId: categoryId,
-        vendorId: vendorId,
+        reportingCategoryId: reportingCategoryId,
+        artistName: item.artistName,
         success: true
       });
     }
