@@ -183,24 +183,63 @@
 
             const printSKULabels = (items) => {
                 const printWindow = window.open('', '_blank');
-                const labelsHTML = items.map(item => `
+                const labelsHTML = items.map(item => {
+                    const sku = item.sku || item.squareId || 'SKU-' + item.id;
+                    return `
                     <div class="label">
-                        <div class="category">${item.category}</div>
-                        <div class="title">${item.title}</div>
-                        <div class="price">$${parseFloat(item.price).toFixed(2)}</div>
-                        <div class="sku">${item.sku || item.squareId || 'SKU-' + item.id}</div>
+                        <div class="content">
+                            <div class="category">${item.category}</div>
+                            <div class="title">${item.title}</div>
+                            <div class="price">$${parseFloat(item.price).toFixed(2)}</div>
+                            <div class="sku">${sku}</div>
+                            <svg class="barcode" id="barcode-${item.id}"></svg>
+                        </div>
                     </div>
-                `).join('');
-                printWindow.document.write(`<!DOCTYPE html><html><head><title>SKU Labels</title><style>
-                    @page { size: 2.125in 1in; margin: 0; }
+                `}).join('');
+                printWindow.document.write(`<!DOCTYPE html><html><head><title>SKU Labels</title>
+                <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"><\/script>
+                <style>
+                    @page { size: 2.125in 1in landscape; margin: 0; }
+                    * { box-sizing: border-box; }
                     body { font-family: Arial, sans-serif; margin: 0; padding: 0; }
-                    .label { page-break-after: always; width: 2.125in; height: 1in; padding: 0.05in; box-sizing: border-box; display: flex; flex-direction: column; justify-content: space-between; }
+                    .label { 
+                        page-break-after: always; 
+                        width: 2.125in; 
+                        height: 1in; 
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                    }
                     .label:last-child { page-break-after: avoid; }
-                    .category { font-size: 7pt; font-weight: bold; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-                    .title { font-size: 8pt; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-                    .price { font-size: 10pt; font-weight: bold; }
-                    .sku { font-size: 7pt; font-family: monospace; color: #666; }
-                </style></head><body>${labelsHTML}<script>window.onload=function(){window.print();}<\/script></body></html>`);
+                    .content {
+                        text-align: center;
+                        padding: 0.05in;
+                    }
+                    .category { font-size: 6pt; font-weight: bold; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+                    .title { font-size: 7pt; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin: 1px 0; }
+                    .price { font-size: 9pt; font-weight: bold; }
+                    .sku { font-size: 6pt; font-family: monospace; color: #666; }
+                    .barcode { display: block; margin: 2px auto 0; max-width: 1.8in; height: 0.25in; }
+                </style></head><body>${labelsHTML}
+                <script>
+                    window.onload = function() {
+                        document.querySelectorAll('.barcode').forEach(function(el) {
+                            var skuText = el.previousElementSibling.textContent;
+                            try {
+                                JsBarcode(el, skuText, {
+                                    format: "CODE128",
+                                    width: 1,
+                                    height: 20,
+                                    displayValue: false,
+                                    margin: 0
+                                });
+                            } catch(e) {
+                                console.log('Barcode error:', e);
+                            }
+                        });
+                        setTimeout(function() { window.print(); }, 300);
+                    };
+                <\/script></body></html>`);
                 printWindow.document.close();
             };
 
@@ -208,21 +247,35 @@
                 const printWindow = window.open('', '_blank');
                 const labelsHTML = items.map(item => `
                     <div class="label">
-                        <div class="artist">${item.artistName}</div>
-                        <div class="title">"${item.title}"</div>
-                        <div class="medium">${item.medium}</div>
-                        <div class="price">$${parseFloat(item.price).toFixed(2)}</div>
+                        <div class="content">
+                            <div class="artist">${item.artistName}</div>
+                            <div class="title">"${item.title}"</div>
+                            <div class="medium">${item.medium}</div>
+                            <div class="price">$${parseFloat(item.price).toFixed(2)}</div>
+                        </div>
                     </div>
                 `).join('');
                 printWindow.document.write(`<!DOCTYPE html><html><head><title>Wall Labels</title><style>
-                    @page { size: 3.5in 2in; margin: 0; }
-                    body { font-family: Georgia, serif; margin: 0; padding: 0; }
-                    .label { page-break-after: always; width: 3.5in; height: 2in; padding: 0.15in; box-sizing: border-box; display: flex; flex-direction: column; justify-content: center; text-align: center; }
+                    @page { size: 3.5in 2in landscape; margin: 0; }
+                    * { box-sizing: border-box; }
+                    body { font-family: 'Aptos', Calibri, Arial, sans-serif; margin: 0; padding: 0; }
+                    .label { 
+                        page-break-after: always; 
+                        width: 3.5in; 
+                        height: 2in; 
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                    }
                     .label:last-child { page-break-after: avoid; }
-                    .artist { font-size: 11pt; font-weight: bold; margin-bottom: 0.1in; }
-                    .title { font-size: 10pt; font-style: italic; margin-bottom: 0.1in; }
-                    .medium { font-size: 9pt; color: #444; margin-bottom: 0.1in; }
-                    .price { font-size: 11pt; font-weight: bold; }
+                    .content {
+                        text-align: center;
+                        padding: 0.15in;
+                    }
+                    .artist { font-size: 16pt; font-weight: bold; margin-bottom: 0.08in; }
+                    .title { font-size: 18pt; font-style: italic; margin-bottom: 0.08in; }
+                    .medium { font-size: 14pt; color: #333; margin-bottom: 0.08in; }
+                    .price { font-size: 16pt; font-weight: bold; }
                 </style></head><body>${labelsHTML}<script>window.onload=function(){window.print();}<\/script></body></html>`);
                  printWindow.document.close();
             };
