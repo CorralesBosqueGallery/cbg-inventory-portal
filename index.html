@@ -189,30 +189,53 @@
             const [dymoAvailable, setDymoAvailable] = useState(false);
             const [dymoPrinters, setDymoPrinters] = useState([]);
             const [selectedPrinter, setSelectedPrinter] = useState('');
+            const [dymoError, setDymoError] = useState('');
 
             // Check for DYMO Connect on load
             useEffect(() => {
                 const checkDymo = async () => {
-                    if (typeof dymo !== 'undefined' && dymo.label && dymo.label.framework) {
-                        try {
-                            await dymo.label.framework.init();
-                            const env = await dymo.label.framework.checkEnvironment();
-                            if (env.isFrameworkInstalled && env.isWebServicePresent) {
-                                setDymoAvailable(true);
-                                const printers = await dymo.label.framework.getPrinters();
-                                const labelPrinters = printers.filter(p => p.printerType === 'LabelWriterPrinter');
-                                setDymoPrinters(labelPrinters);
-                                if (labelPrinters.length > 0) {
-                                    setSelectedPrinter(labelPrinters[0].name);
-                                }
+                    console.log('Checking DYMO...', typeof dymo);
+                    
+                    // Check if dymo object exists
+                    if (typeof dymo === 'undefined') {
+                        setDymoError('DYMO framework not loaded');
+                        console.log('DYMO framework not loaded from CDN');
+                        return;
+                    }
+                    
+                    if (!dymo.label || !dymo.label.framework) {
+                        setDymoError('DYMO label framework not found');
+                        console.log('DYMO label framework not found');
+                        return;
+                    }
+                    
+                    try {
+                        console.log('Initializing DYMO...');
+                        await dymo.label.framework.init();
+                        
+                        console.log('Checking environment...');
+                        const env = await dymo.label.framework.checkEnvironment();
+                        console.log('DYMO environment:', env);
+                        
+                        if (env.isFrameworkInstalled && env.isWebServicePresent) {
+                            setDymoAvailable(true);
+                            const printers = await dymo.label.framework.getPrinters();
+                            console.log('DYMO printers:', printers);
+                            const labelPrinters = printers.filter(p => p.printerType === 'LabelWriterPrinter');
+                            setDymoPrinters(labelPrinters);
+                            if (labelPrinters.length > 0) {
+                                setSelectedPrinter(labelPrinters[0].name);
                             }
-                        } catch (e) {
-                            console.log('DYMO not available:', e);
+                        } else {
+                            setDymoError(`Framework: ${env.isFrameworkInstalled}, WebService: ${env.isWebServicePresent}`);
                         }
+                    } catch (e) {
+                        console.log('DYMO error:', e);
+                        setDymoError(e.message || 'Unknown error');
                     }
                 };
                 // Delay check to allow script to load
-                setTimeout(checkDymo, 1000);
+                setTimeout(checkDymo, 2000);
             }, []);
 
             // DYMO Label XML templates - units in twips (1440 twips = 1 inch)
@@ -504,7 +527,7 @@ html, body { font-family: Arial, sans-serif; margin: 0; padding: 0; }
 window.onload = function() {
     document.querySelectorAll('.barcode').forEach(function(el) {
         try {
-            JsBarcode(el, el.dataset.sku, { format: "CODE128", width: 2, height: 30, displayValue: true, fontSize: 8, margin: 0 });
+            JsBarcode(el, el.dataset.sku, { format: "CODE128", width: 2.5, height: 40, displayValue: true, fontSize: 10, margin: 0 });
         } catch(e) { console.log('Barcode error:', e); }
     });
     setTimeout(function() { window.print(); }, 300);
@@ -990,9 +1013,12 @@ html, body { font-family: 'Aptos', Calibri, Arial, sans-serif; margin: 0; paddin
                                                     </div>
                                                 </div>
                                             ) : (
-                                                <p className="text-sm text-gray-600 mb-4">
-                                                    💡 Install <a href="https://download.dymo.com/dymo/Software/Win/DCDSetup1.4.5.1.exe" className="text-blue-600 underline" target="_blank">DYMO Connect</a> for better label printing, or use browser print below.
-                                                </p>
+                                                <div className="mb-4">
+                                                    <p className="text-sm text-gray-600 mb-2">
+                                                        💡 Install <a href="https://download.dymo.com/dymo/Software/Win/DCDSetup1.4.5.1.exe" className="text-blue-600 underline" target="_blank">DYMO Connect</a> for better label printing, or use browser print below.
+                                                    </p>
+                                                    {dymoError && <p className="text-xs text-red-500">DYMO status: {dymoError}</p>}
+                                                </div>
                                             )}
                                             
                                             <div className="flex flex-wrap gap-3">
