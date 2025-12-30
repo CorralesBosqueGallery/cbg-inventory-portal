@@ -198,18 +198,14 @@
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"><\/script>
 <style>
 @page { size: 2.125in 1in; margin: 0; }
-html, body { margin: 0; padding: 0; font-family: Arial, sans-serif; }
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { font-family: Arial, sans-serif; }
 .label { 
     width: 2.125in; 
     height: 1in; 
     page-break-after: always;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
+    padding-top: 0.08in;
     text-align: center;
-    box-sizing: border-box;
-    padding: 0.05in;
     overflow: hidden;
 }
 .label:last-child { page-break-after: auto; }
@@ -246,18 +242,14 @@ window.onload = function() {
                 }).join('');
                 printWindow.document.write(`<!DOCTYPE html><html><head><title>Wall Labels</title><style>
 @page { size: 3.5in 2in; margin: 0; }
-html, body { margin: 0; padding: 0; font-family: 'Aptos', Calibri, Arial, sans-serif; }
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { font-family: 'Aptos', Calibri, Arial, sans-serif; }
 .label { 
     width: 3.5in; 
     height: 2in; 
     page-break-after: always;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
+    padding-top: 0.35in;
     text-align: center;
-    box-sizing: border-box;
-    padding: 0.1in;
     overflow: hidden;
 }
 .label:last-child { page-break-after: auto; }
