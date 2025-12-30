@@ -185,10 +185,14 @@
                 const printWindow = window.open('', '_blank');
                 const labelsHTML = items.map((item, index) => {
                     const sku = item.sku || item.squareId || 'SKU-' + item.id;
-                    const titleClass = item.title.length > 30 ? 'long' : '';
+                    // Truncate title if too long
+                    let displayTitle = item.title;
+                    if (displayTitle.length > 25) {
+                        displayTitle = displayTitle.substring(0, 22) + '...';
+                    }
                     return `<div class="label" ${index > 0 ? 'style="page-break-before: always;"' : ''}>
                         <div class="category">${item.category}</div>
-                        <div class="title ${titleClass}">${item.title}</div>
+                        <div class="title">${displayTitle}</div>
                         <div class="price">$${parseFloat(item.price).toFixed(2)}</div>
                         <div class="sku">${sku}</div>
                         <svg class="barcode" data-sku="${sku}"></svg>
@@ -197,24 +201,23 @@
                 printWindow.document.write(`<!DOCTYPE html><html><head><title>SKU Labels</title>
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"><\/script>
 <style>
-@page { size: 2.125in 1in; margin: 0.18in 0.06in 0.05in 0.06in; }
+@page { size: 2.125in 1in; margin: 0.28in 0.06in 0.02in 0.06in; }
 * { margin: 0; padding: 0; box-sizing: border-box; }
 html, body { font-family: Arial, sans-serif; margin: 0; padding: 0; }
 .label { 
     text-align: center;
 }
-.category { font-size: 6pt; font-weight: bold; }
-.title { font-size: 7pt; margin: 1px 0; }
-.title.long { font-size: 6pt; }
-.price { font-size: 8pt; font-weight: bold; }
+.category { font-size: 5pt; font-weight: bold; }
+.title { font-size: 6pt; margin: 1px 0; }
+.price { font-size: 7pt; font-weight: bold; }
 .sku { font-size: 5pt; font-family: monospace; color: #666; }
-.barcode { display: block; margin: 2px auto 0; height: 18px; }
+.barcode { display: block; margin: 1px auto 0; height: 14px; }
 </style></head><body>${labelsHTML}
 <script>
 window.onload = function() {
     document.querySelectorAll('.barcode').forEach(function(el) {
         try {
-            JsBarcode(el, el.dataset.sku, { format: "CODE128", width: 1, height: 16, displayValue: false, margin: 0 });
+            JsBarcode(el, el.dataset.sku, { format: "CODE128", width: 1, height: 12, displayValue: false, margin: 0 });
         } catch(e) { console.log('Barcode error:', e); }
     });
     setTimeout(function() { window.print(); }, 300);
@@ -226,27 +229,29 @@ window.onload = function() {
             const printWallLabels = (items) => {
                 const printWindow = window.open('', '_blank');
                 const labelsHTML = items.map((item, index) => {
-                    const titleClass = item.title.length > 40 ? 'very-long' : (item.title.length > 25 ? 'long' : '');
+                    // Truncate title if too long
+                    let displayTitle = item.title;
+                    if (displayTitle.length > 35) {
+                        displayTitle = displayTitle.substring(0, 32) + '...';
+                    }
                     return `<div class="label" ${index > 0 ? 'style="page-break-before: always;"' : ''}>
                         <div class="artist">${item.artistName}</div>
-                        <div class="title ${titleClass}">"${item.title}"</div>
+                        <div class="title">"${displayTitle}"</div>
                         <div class="medium">${item.medium}</div>
                         <div class="price">$${parseFloat(item.price).toFixed(2)}</div>
                     </div>`;
                 }).join('');
                 printWindow.document.write(`<!DOCTYPE html><html><head><title>Wall Labels</title><style>
-@page { size: 3.5in 2in; margin: 0.55in 0.15in 0.1in 0.15in; }
+@page { size: 3.5in 2in; margin: 0.45in 0.15in 0.1in 0.15in; }
 * { margin: 0; padding: 0; box-sizing: border-box; }
 html, body { font-family: 'Aptos', Calibri, Arial, sans-serif; margin: 0; padding: 0; }
 .label { 
     text-align: center;
 }
-.artist { font-size: 16pt; font-weight: bold; margin-bottom: 4px; }
-.title { font-size: 18pt; font-style: italic; margin-bottom: 4px; line-height: 1.1; }
-.title.long { font-size: 14pt; }
-.title.very-long { font-size: 12pt; }
-.medium { font-size: 14pt; color: #333; margin-bottom: 4px; }
-.price { font-size: 16pt; font-weight: bold; }
+.artist { font-size: 14pt; font-weight: bold; margin-bottom: 3px; }
+.title { font-size: 15pt; font-style: italic; margin-bottom: 3px; line-height: 1.1; }
+.medium { font-size: 12pt; color: #333; margin-bottom: 3px; }
+.price { font-size: 14pt; font-weight: bold; }
 </style></head><body>${labelsHTML}<script>window.onload=function(){window.print();}<\/script></body></html>`);
                 printWindow.document.close();
             };
