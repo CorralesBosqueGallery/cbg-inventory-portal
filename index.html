@@ -509,25 +509,31 @@
                 printWindow.document.write(`<!DOCTYPE html><html><head><title>SKU Labels</title>
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"><\/script>
 <style>
-@page { size: 2.125in 1in; margin: 0.1in 0.06in 0.3in 0.06in; }
+@page { size: 2.125in 1in; margin: 0; }
+@media print { @page { margin: 0; } }
 * { margin: 0; padding: 0; box-sizing: border-box; }
 html, body { font-family: Arial, sans-serif; margin: 0; padding: 0; }
 .label { 
+    width: 2.125in;
+    height: 1in;
+    padding: 0.08in;
     text-align: center;
+    page-break-after: always;
 }
+.label:last-child { page-break-after: auto; }
 .content {
     text-align: center;
 }
-.category { font-size: 7pt; font-weight: bold; }
-.title { font-size: 8pt; margin: 2px 0; }
-.price { font-size: 9pt; font-weight: bold; margin-bottom: 3px; }
+.category { font-size: 9pt; font-weight: bold; }
+.title { font-size: 10pt; margin: 2px 0; }
+.price { font-size: 11pt; font-weight: bold; margin-bottom: 3px; }
 .barcode { display: block; margin: 0 auto; }
 </style></head><body>${labelsHTML}
 <script>
 window.onload = function() {
     document.querySelectorAll('.barcode').forEach(function(el) {
         try {
-            JsBarcode(el, el.dataset.sku, { format: "CODE128", width: 2.5, height: 40, displayValue: true, fontSize: 10, margin: 0 });
+            JsBarcode(el, el.dataset.sku, { format: "CODE128", width: 1.8, height: 25, displayValue: true, fontSize: 10, margin: 0 });
         } catch(e) { console.log('Barcode error:', e); }
     });
     setTimeout(function() { window.print(); }, 300);
@@ -547,16 +553,17 @@ window.onload = function() {
                     </div>`;
                 }).join('');
                 printWindow.document.write(`<!DOCTYPE html><html><head><title>Wall Labels</title><style>
-@page { size: 3.5in 2in; margin: 0.85in 0.15in 0 0.15in; }
+@page { size: 3.5in 2in; margin: 0.5in 0.15in 0.2in 0.15in; }
+@media print { @page { margin: 0.5in 0.15in 0.2in 0.15in; } }
 * { margin: 0; padding: 0; box-sizing: border-box; }
 html, body { font-family: 'Aptos', Calibri, Arial, sans-serif; margin: 0; padding: 0; }
 .label { 
     text-align: center;
 }
-.artist { font-size: 14pt; font-weight: bold; margin-bottom: 3px; }
-.title { font-size: 15pt; font-style: italic; margin-bottom: 3px; line-height: 1.1; }
-.medium { font-size: 12pt; color: #333; margin-bottom: 3px; }
-.price { font-size: 14pt; font-weight: bold; }
+.artist { font-size: 16pt; font-weight: bold; margin-bottom: 4px; }
+.title { font-size: 17pt; font-style: italic; margin-bottom: 4px; line-height: 1.1; }
+.medium { font-size: 14pt; color: #333; margin-bottom: 4px; }
+.price { font-size: 16pt; font-weight: bold; }
 </style></head><body>${labelsHTML}<script>window.onload=function(){window.print();}<\/script></body></html>`);
                 printWindow.document.close();
             };
