@@ -196,7 +196,7 @@
                 printWindow.document.write(`<!DOCTYPE html><html><head><title>SKU Labels</title>
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"><\/script>
 <style>
-@page { size: 2.125in 1in; margin: 0.4in 0.06in 0.02in 0.06in; }
+@page { size: 2.125in 1in; margin: 0.55in 0.06in 0 0.06in; }
 * { margin: 0; padding: 0; box-sizing: border-box; }
 html, body { font-family: Arial, sans-serif; margin: 0; padding: 0; }
 .label { 
@@ -206,13 +206,13 @@ html, body { font-family: Arial, sans-serif; margin: 0; padding: 0; }
 .title { font-size: 6pt; margin: 1px 0; }
 .price { font-size: 7pt; font-weight: bold; }
 .sku { font-size: 5pt; font-family: monospace; color: #666; }
-.barcode { display: block; margin: 1px auto 0; height: 14px; }
+.barcode { display: block; margin: 1px auto 0; height: 22px; }
 </style></head><body>${labelsHTML}
 <script>
 window.onload = function() {
     document.querySelectorAll('.barcode').forEach(function(el) {
         try {
-            JsBarcode(el, el.dataset.sku, { format: "CODE128", width: 1, height: 12, displayValue: false, margin: 0 });
+            JsBarcode(el, el.dataset.sku, { format: "CODE128", width: 1.5, height: 20, displayValue: false, margin: 0 });
         } catch(e) { console.log('Barcode error:', e); }
     });
     setTimeout(function() { window.print(); }, 300);
@@ -232,7 +232,7 @@ window.onload = function() {
                     </div>`;
                 }).join('');
                 printWindow.document.write(`<!DOCTYPE html><html><head><title>Wall Labels</title><style>
-@page { size: 3.5in 2in; margin: 0.65in 0.15in 0.1in 0.15in; }
+@page { size: 3.5in 2in; margin: 0.85in 0.15in 0 0.15in; }
 * { margin: 0; padding: 0; box-sizing: border-box; }
 html, body { font-family: 'Aptos', Calibri, Arial, sans-serif; margin: 0; padding: 0; }
 .label { 
