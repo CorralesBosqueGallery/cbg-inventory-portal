@@ -96,6 +96,8 @@
             const [editForm, setEditForm] = useState({ title: '', type: '', medium: '', description: '', height: '', width: '', price: '', quantity: '1', discounts: '' });
             const [showEditArtist, setShowEditArtist] = useState(null);
             const [editArtistForm, setEditArtistForm] = useState({ name: '', type: '', rate: '' });
+            const [selectedForUpload, setSelectedForUpload] = useState(new Set());
+            const [selectedForPrint, setSelectedForPrint] = useState(new Set());
 
             // Load data from KV on startup
             useEffect(() => {
@@ -566,8 +568,8 @@ html, body { font-family: 'Aptos', Calibri, Arial, sans-serif; margin: 0; paddin
             const handleApprove = async (id) => await saveSubmissions(submissions.map(s => s.id === id ? { ...s, status: 'approved' } : s));
             const handleReject = async (id, reason) => await saveSubmissions(submissions.map(s => s.id === id ? { ...s, status: 'rejected', rejectionReason: reason } : s));
 
-            const handleProcess = async () => {
-                const toProcess = submissions.filter(s => s.status === 'approved');
+            const handleProcess = async (itemsToProcess = null) => {
+                const toProcess = itemsToProcess || submissions.filter(s => s.status === 'approved');
                 if (toProcess.length === 0) { alert('No approved items to process'); return; }
                 if (!confirm(`Upload ${toProcess.length} items to Square?`)) return;
                 setProcessing(true);
@@ -580,6 +582,7 @@ html, body { font-family: 'Aptos', Calibri, Arial, sans-serif; margin: 0; paddin
                             return match ? { ...s, status: 'processed', processedAt: new Date().toISOString(), squareId: match.squareId, sku: match.sku } : s;
                         });
                         await saveSubmissions(updated);
+                        setSelectedForUpload(new Set());
                         alert(`✅ Success! ${toProcess.length} items uploaded.\n\nGo to "Print Labels" tab to print.`);
                     } else throw new Error(result.error || 'Upload failed');
                 } catch (error) {
@@ -883,20 +886,89 @@ html, body { font-family: 'Aptos', Calibri, Arial, sans-serif; margin: 0; paddin
                                 <div>
                                     {approvedSubmissions.length > 0 && (
                                         <div className="bg-gradient-to-r from-green-50 to-blue-50 border-2 border-green-300 rounded-lg p-6 mb-6">
-                                            <h3 className="text-lg font-bold mb-4">{approvedSubmissions.length} items ready to upload</h3>
-                                            <button onClick={handleProcess} disabled={processing} className="flex items-center space-x-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg disabled:bg-gray-400">{processing ? '⟳' : '⬆️'} <span>{processing ? 'Uploading...' : 'Upload to Square'}</span></button>
+                                            <h3 className="text-lg font-bold mb-4">{selectedForUpload.size > 0 ? `${selectedForUpload.size} of ${approvedSubmissions.length}` : approvedSubmissions.length} items ready to upload</h3>
+                                            <div className="flex flex-wrap gap-3">
+                                                <button 
+                                                    onClick={() => {
+                                                        const itemsToUpload = selectedForUpload.size > 0 
+                                                            ? approvedSubmissions.filter(s => selectedForUpload.has(s.id))
+                                                            : approvedSubmissions;
+                                                        handleProcess(itemsToUpload);
+                                                    }} 
+                                                    disabled={processing} 
+                                                    className="flex items-center space-x-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg disabled:bg-gray-400"
+                                                >
+                                                    {processing ? '⟳' : '⬆️'} <span>{processing ? 'Uploading...' : selectedForUpload.size > 0 ? `Upload ${selectedForUpload.size} Selected` : 'Upload All to Square'}</span>
+                                                </button>
+                                                {selectedForUpload.size > 0 && (
+                                                    <button 
+                                                        onClick={() => {
+                                                            if (confirm(`Remove ${selectedForUpload.size} item(s) from upload queue? They will go back to pending.`)) {
+                                                                const updatedSubmissions = submissions.map(s => 
+                                                                    selectedForUpload.has(s.id) ? { ...s, status: 'pending' } : s
+                                                                );
+                                                                saveSubmissions(updatedSubmissions);
+                                                                setSelectedForUpload(new Set());
+                                                            }
+                                                        }}
+                                                        className="flex items-center space-x-2 px-6 py-3 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-lg"
+                                                    >
+                                                        🗑️ <span>Remove Selected</span>
+                                                    </button>
+                                                )}
+                                            </div>
                                         </div>
                                     )}
-                                    <div className="space-y-4">{approvedSubmissions.length === 0 ? <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500">No items ready for upload</div> : approvedSubmissions.map(sub => (
-                                        <div key={sub.id} className="bg-white rounded-lg shadow p-6"><h3 className="text-xl font-bold">{sub.title}</h3><p className="text-sm text-gray-600">by {sub.artistName} • {sub.category}</p></div>
-                                    ))}</div>
+                                    <div className="space-y-4">
+                                        {approvedSubmissions.length === 0 ? <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500">No items ready for upload</div> : (
+                                            <>
+                                                <div className="bg-white rounded-lg shadow p-3 flex items-center gap-3">
+                                                    <input 
+                                                        type="checkbox" 
+                                                        checked={selectedForUpload.size === approvedSubmissions.length && approvedSubmissions.length > 0}
+                                                        onChange={(e) => {
+                                                            if (e.target.checked) {
+                                                                setSelectedForUpload(new Set(approvedSubmissions.map(s => s.id)));
+                                                            } else {
+                                                                setSelectedForUpload(new Set());
+                                                            }
+                                                        }}
+                                                        className="w-5 h-5"
+                                                    />
+                                                    <span className="font-medium">Select All</span>
+                                                </div>
+                                                {approvedSubmissions.map(sub => (
+                                                    <div key={sub.id} className="bg-white rounded-lg shadow p-4 flex items-center gap-4">
+                                                        <input 
+                                                            type="checkbox" 
+                                                            checked={selectedForUpload.has(sub.id)}
+                                                            onChange={(e) => {
+                                                                const newSet = new Set(selectedForUpload);
+                                                                if (e.target.checked) {
+                                                                    newSet.add(sub.id);
+                                                                } else {
+                                                                    newSet.delete(sub.id);
+                                                                }
+                                                                setSelectedForUpload(newSet);
+                                                            }}
+                                                            className="w-5 h-5"
+                                                        />
+                                                        <div className="flex-1">
+                                                            <h3 className="text-lg font-bold">{sub.title}</h3>
+                                                            <p className="text-sm text-gray-600">by {sub.artistName} • {sub.category} • ${sub.price}</p>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </>
+                                        )}
+                                    </div>
                                 </div>
                             )}
                             {adminView === 'print' && (
                                 <div>
                                     {processedSubmissions.length > 0 && (
                                         <div className="bg-gradient-to-r from-purple-50 to-pink-50 border-2 border-purple-300 rounded-lg p-6 mb-6">
-                                            <h3 className="text-lg font-bold mb-4">🖨️ Print Labels for {processedSubmissions.length} items</h3>
+                                            <h3 className="text-lg font-bold mb-4">🖨️ Print Labels for {selectedForPrint.size > 0 ? `${selectedForPrint.size} of ${processedSubmissions.length}` : processedSubmissions.length} items</h3>
                                             
                                             {dymoAvailable ? (
                                                 <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg">
@@ -921,16 +993,37 @@ html, body { font-family: 'Aptos', Calibri, Arial, sans-serif; margin: 0; paddin
                                             )}
                                             
                                             <div className="flex flex-wrap gap-3">
-                                                {dymoAvailable ? (
-                                                    <>
-                                                        <button onClick={() => printWithDymo(processedSubmissions, 'sku')} className="flex items-center space-x-2 px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white font-semibold rounded-lg">🏷️ <span>Print All SKU (DYMO)</span></button>
-                                                        <button onClick={() => printWithDymo(processedSubmissions, 'wall')} className="flex items-center space-x-2 px-6 py-3 bg-pink-600 hover:bg-pink-700 text-white font-semibold rounded-lg">🖼️ <span>Print All Wall (DYMO)</span></button>
-                                                    </>
-                                                ) : (
-                                                    <>
-                                                        <button onClick={() => printSKULabels(processedSubmissions)} className="flex items-center space-x-2 px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white font-semibold rounded-lg">🏷️ <span>Print All SKU Stickers</span></button>
-                                                        <button onClick={() => printWallLabels(processedSubmissions)} className="flex items-center space-x-2 px-6 py-3 bg-pink-600 hover:bg-pink-700 text-white font-semibold rounded-lg">🖼️ <span>Print All Wall Labels</span></button>
-                                                    </>
+                                                {(() => {
+                                                    const itemsToPrint = selectedForPrint.size > 0 
+                                                        ? processedSubmissions.filter(s => selectedForPrint.has(s.id))
+                                                        : processedSubmissions;
+                                                    return dymoAvailable ? (
+                                                        <>
+                                                            <button onClick={() => printWithDymo(itemsToPrint, 'sku')} className="flex items-center space-x-2 px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white font-semibold rounded-lg">🏷️ <span>{selectedForPrint.size > 0 ? `Print ${selectedForPrint.size} SKU (DYMO)` : 'Print All SKU (DYMO)'}</span></button>
+                                                            <button onClick={() => printWithDymo(itemsToPrint, 'wall')} className="flex items-center space-x-2 px-6 py-3 bg-pink-600 hover:bg-pink-700 text-white font-semibold rounded-lg">🖼️ <span>{selectedForPrint.size > 0 ? `Print ${selectedForPrint.size} Wall (DYMO)` : 'Print All Wall (DYMO)'}</span></button>
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <button onClick={() => printSKULabels(itemsToPrint)} className="flex items-center space-x-2 px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white font-semibold rounded-lg">🏷️ <span>{selectedForPrint.size > 0 ? `Print ${selectedForPrint.size} SKU` : 'Print All SKU'}</span></button>
+                                                            <button onClick={() => printWallLabels(itemsToPrint)} className="flex items-center space-x-2 px-6 py-3 bg-pink-600 hover:bg-pink-700 text-white font-semibold rounded-lg">🖼️ <span>{selectedForPrint.size > 0 ? `Print ${selectedForPrint.size} Wall` : 'Print All Wall'}</span></button>
+                                                        </>
+                                                    );
+                                                })()}
+                                                {selectedForPrint.size > 0 && (
+                                                    <button 
+                                                        onClick={() => {
+                                                            if (confirm(`Remove ${selectedForPrint.size} item(s) from print queue?`)) {
+                                                                const updatedSubmissions = submissions.map(s => 
+                                                                    selectedForPrint.has(s.id) ? { ...s, status: 'approved' } : s
+                                                                );
+                                                                saveSubmissions(updatedSubmissions);
+                                                                setSelectedForPrint(new Set());
+                                                            }
+                                                        }}
+                                                        className="flex items-center space-x-2 px-6 py-3 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-lg"
+                                                    >
+                                                        🗑️ <span>Remove Selected</span>
+                                                    </button>
                                                 )}
                                             </div>
                                             
@@ -938,8 +1031,8 @@ html, body { font-family: 'Aptos', Calibri, Arial, sans-serif; margin: 0; paddin
                                                 <details className="mt-4">
                                                     <summary className="text-xs text-gray-500 cursor-pointer">Browser print (fallback)</summary>
                                                     <div className="flex flex-wrap gap-2 mt-2">
-                                                        <button onClick={() => printSKULabels(processedSubmissions)} className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 text-sm rounded">🏷️ Browser SKU</button>
-                                                        <button onClick={() => printWallLabels(processedSubmissions)} className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 text-sm rounded">🖼️ Browser Wall</button>
+                                                        <button onClick={() => printSKULabels(selectedForPrint.size > 0 ? processedSubmissions.filter(s => selectedForPrint.has(s.id)) : processedSubmissions)} className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 text-sm rounded">🏷️ Browser SKU</button>
+                                                        <button onClick={() => printWallLabels(selectedForPrint.size > 0 ? processedSubmissions.filter(s => selectedForPrint.has(s.id)) : processedSubmissions)} className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 text-sm rounded">🖼️ Browser Wall</button>
                                                     </div>
                                                 </details>
                                             )}
@@ -947,24 +1040,63 @@ html, body { font-family: 'Aptos', Calibri, Arial, sans-serif; margin: 0; paddin
                                             <p className="text-xs text-gray-500 mt-4"><strong>Tip:</strong> SKU → 1"×2⅛" labels | Wall → 2"×3.5" labels</p>
                                         </div>
                                     )}
-                                    <div className="space-y-4">{processedSubmissions.length === 0 ? <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500">No processed items. Upload approved items first.</div> : processedSubmissions.map(sub => (
-                                        <div key={sub.id} className="bg-white rounded-lg shadow p-4 flex justify-between items-center">
-                                            <div><h3 className="font-bold">{sub.title}</h3><p className="text-sm text-gray-600">by {sub.artistName} • ${sub.price}</p><p className="text-xs text-gray-400">SKU: {sub.sku || sub.squareId || 'SKU-' + sub.id}</p></div>
-                                            <div className="flex space-x-2">
-                                                {dymoAvailable ? (
-                                                    <>
-                                                        <button onClick={() => printWithDymo([sub], 'sku')} className="px-3 py-1 bg-purple-100 hover:bg-purple-200 text-purple-700 text-sm rounded">🏷️ SKU</button>
-                                                        <button onClick={() => printWithDymo([sub], 'wall')} className="px-3 py-1 bg-pink-100 hover:bg-pink-200 text-pink-700 text-sm rounded">🖼️ Wall</button>
-                                                    </>
-                                                ) : (
-                                                    <>
-                                                        <button onClick={() => printSKULabels([sub])} className="px-3 py-1 bg-purple-100 hover:bg-purple-200 text-purple-700 text-sm rounded">🏷️ SKU</button>
-                                                        <button onClick={() => printWallLabels([sub])} className="px-3 py-1 bg-pink-100 hover:bg-pink-200 text-pink-700 text-sm rounded">🖼️ Wall</button>
-                                                    </>
-                                                )}
-                                            </div>
-                                        </div>
-                                    ))}</div>
+                                    <div className="space-y-4">
+                                        {processedSubmissions.length === 0 ? <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500">No processed items. Upload approved items first.</div> : (
+                                            <>
+                                                <div className="bg-white rounded-lg shadow p-3 flex items-center gap-3">
+                                                    <input 
+                                                        type="checkbox" 
+                                                        checked={selectedForPrint.size === processedSubmissions.length && processedSubmissions.length > 0}
+                                                        onChange={(e) => {
+                                                            if (e.target.checked) {
+                                                                setSelectedForPrint(new Set(processedSubmissions.map(s => s.id)));
+                                                            } else {
+                                                                setSelectedForPrint(new Set());
+                                                            }
+                                                        }}
+                                                        className="w-5 h-5"
+                                                    />
+                                                    <span className="font-medium">Select All</span>
+                                                </div>
+                                                {processedSubmissions.map(sub => (
+                                                    <div key={sub.id} className="bg-white rounded-lg shadow p-4 flex items-center gap-4">
+                                                        <input 
+                                                            type="checkbox" 
+                                                            checked={selectedForPrint.has(sub.id)}
+                                                            onChange={(e) => {
+                                                                const newSet = new Set(selectedForPrint);
+                                                                if (e.target.checked) {
+                                                                    newSet.add(sub.id);
+                                                                } else {
+                                                                    newSet.delete(sub.id);
+                                                                }
+                                                                setSelectedForPrint(newSet);
+                                                            }}
+                                                            className="w-5 h-5"
+                                                        />
+                                                        <div className="flex-1">
+                                                            <h3 className="font-bold">{sub.title}</h3>
+                                                            <p className="text-sm text-gray-600">by {sub.artistName} • ${sub.price}</p>
+                                                            <p className="text-xs text-gray-400">SKU: {sub.sku || sub.squareId || 'SKU-' + sub.id}</p>
+                                                        </div>
+                                                        <div className="flex space-x-2">
+                                                            {dymoAvailable ? (
+                                                                <>
+                                                                    <button onClick={() => printWithDymo([sub], 'sku')} className="px-3 py-1 bg-purple-100 hover:bg-purple-200 text-purple-700 text-sm rounded">🏷️ SKU</button>
+                                                                    <button onClick={() => printWithDymo([sub], 'wall')} className="px-3 py-1 bg-pink-100 hover:bg-pink-200 text-pink-700 text-sm rounded">🖼️ Wall</button>
+                                                                </>
+                                                            ) : (
+                                                                <>
+                                                                    <button onClick={() => printSKULabels([sub])} className="px-3 py-1 bg-purple-100 hover:bg-purple-200 text-purple-700 text-sm rounded">🏷️ SKU</button>
+                                                                    <button onClick={() => printWallLabels([sub])} className="px-3 py-1 bg-pink-100 hover:bg-pink-200 text-pink-700 text-sm rounded">🖼️ Wall</button>
+                                                                </>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </>
+                                        )}
+                                    </div>
                                 </div>
                             )}
                             {adminView === 'artists' && (
