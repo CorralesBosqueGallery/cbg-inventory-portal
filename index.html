@@ -183,10 +183,10 @@
 
             const printSKULabels = (items) => {
                 const printWindow = window.open('', '_blank');
-                const labelsHTML = items.map(item => {
+                const labelsHTML = items.map((item, index) => {
                     const sku = item.sku || item.squareId || 'SKU-' + item.id;
                     const titleClass = item.title.length > 30 ? 'long' : '';
-                    return `<div class="label">
+                    return `<div class="label" ${index > 0 ? 'style="page-break-before: always;"' : ''}>
                         <div class="category">${item.category}</div>
                         <div class="title ${titleClass}">${item.title}</div>
                         <div class="price">$${parseFloat(item.price).toFixed(2)}</div>
@@ -197,18 +197,12 @@
                 printWindow.document.write(`<!DOCTYPE html><html><head><title>SKU Labels</title>
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"><\/script>
 <style>
-@page { size: 2.125in 1in; margin: 0; }
+@page { size: 2.125in 1in; margin: 0.08in 0.06in; }
 * { margin: 0; padding: 0; box-sizing: border-box; }
-html, body { font-family: Arial, sans-serif; }
+html, body { font-family: Arial, sans-serif; margin: 0; padding: 0; }
 .label { 
-    width: 2.125in; 
-    height: 1in; 
-    page-break-after: always;
-    padding-top: 0.08in;
     text-align: center;
-    overflow: hidden;
 }
-.label:last-child { page-break-after: auto; }
 .category { font-size: 6pt; font-weight: bold; }
 .title { font-size: 7pt; margin: 1px 0; }
 .title.long { font-size: 6pt; }
@@ -231,9 +225,9 @@ window.onload = function() {
 
             const printWallLabels = (items) => {
                 const printWindow = window.open('', '_blank');
-                const labelsHTML = items.map(item => {
+                const labelsHTML = items.map((item, index) => {
                     const titleClass = item.title.length > 40 ? 'very-long' : (item.title.length > 25 ? 'long' : '');
-                    return `<div class="label">
+                    return `<div class="label" ${index > 0 ? 'style="page-break-before: always;"' : ''}>
                         <div class="artist">${item.artistName}</div>
                         <div class="title ${titleClass}">"${item.title}"</div>
                         <div class="medium">${item.medium}</div>
@@ -241,18 +235,12 @@ window.onload = function() {
                     </div>`;
                 }).join('');
                 printWindow.document.write(`<!DOCTYPE html><html><head><title>Wall Labels</title><style>
-@page { size: 3.5in 2in; margin: 0; }
+@page { size: 3.5in 2in; margin: 0.2in 0.15in; }
 * { margin: 0; padding: 0; box-sizing: border-box; }
-html, body { font-family: 'Aptos', Calibri, Arial, sans-serif; }
+html, body { font-family: 'Aptos', Calibri, Arial, sans-serif; margin: 0; padding: 0; }
 .label { 
-    width: 3.5in; 
-    height: 2in; 
-    page-break-after: always;
-    padding-top: 0.35in;
     text-align: center;
-    overflow: hidden;
 }
-.label:last-child { page-break-after: auto; }
 .artist { font-size: 16pt; font-weight: bold; margin-bottom: 4px; }
 .title { font-size: 18pt; font-style: italic; margin-bottom: 4px; line-height: 1.1; }
 .title.long { font-size: 14pt; }
