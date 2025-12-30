@@ -202,11 +202,17 @@ html, body { margin: 0; padding: 0; font-family: Arial, sans-serif; }
 .label { 
     width: 2.125in; 
     height: 1in; 
+    page-break-after: always;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
     text-align: center;
-    display: table-cell;
-    vertical-align: middle;
+    box-sizing: border-box;
     padding: 0.05in;
+    overflow: hidden;
 }
+.label:last-child { page-break-after: auto; }
 .category { font-size: 6pt; font-weight: bold; }
 .title { font-size: 7pt; margin: 1px 0; }
 .title.long { font-size: 6pt; }
@@ -244,11 +250,17 @@ html, body { margin: 0; padding: 0; font-family: 'Aptos', Calibri, Arial, sans-s
 .label { 
     width: 3.5in; 
     height: 2in; 
+    page-break-after: always;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
     text-align: center;
-    display: table-cell;
-    vertical-align: middle;
+    box-sizing: border-box;
     padding: 0.1in;
+    overflow: hidden;
 }
+.label:last-child { page-break-after: auto; }
 .artist { font-size: 16pt; font-weight: bold; margin-bottom: 4px; }
 .title { font-size: 18pt; font-style: italic; margin-bottom: 4px; line-height: 1.1; }
 .title.long { font-size: 14pt; }
