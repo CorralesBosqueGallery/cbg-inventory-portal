@@ -17,16 +17,30 @@ module.exports = async (req, res) => {
     const categoryCache = {};
     const reportingCategoryCache = {};
 
+    // Helper function to sanitize strings for Square IDs (only alphanumeric and hyphens)
+    const sanitizeForId = (str) => {
+      return str
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '') // Remove accents
+        .replace(/[^a-zA-Z0-9\s-]/g, '') // Remove special chars except spaces and hyphens
+        .replace(/\s+/g, '-') // Replace spaces with hyphens
+        .replace(/-+/g, '-') // Collapse multiple hyphens
+        .substring(0, 50); // Limit length
+    };
+
     // Helper function to generate SKU
     const generateSKU = (artistName, itemId) => {
       // Get initials from artist name (e.g., "Joan Findley-Perls" -> "JFP")
       const initials = artistName
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '') // Remove accents
         .split(/[\s-]+/)
         .map(word => word.charAt(0).toUpperCase())
+        .filter(char => /[A-Z]/.test(char))
         .join('');
       // Add timestamp portion for uniqueness
       const timestamp = Date.now().toString(36).toUpperCase().slice(-4);
-      return `CBG-${initials}-${timestamp}`;
+      return `CBG-${initials || 'X'}-${timestamp}`;
     };
 
     // Helper function to get or create reporting category (artist name)
@@ -71,10 +85,10 @@ module.exports = async (req, res) => {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          idempotency_key: `reporting-category-${artistName}-${Date.now()}`,
+          idempotency_key: `reporting-category-${sanitizeForId(artistName)}-${Date.now()}`,
           object: {
             type: 'CATEGORY',
-            id: `#reporting-category-${artistName.replace(/\s+/g, '-')}`,
+            id: `#reporting-category-${sanitizeForId(artistName)}`,
             category_data: {
               name: artistName
             }
@@ -142,10 +156,10 @@ module.exports = async (req, res) => {
               'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-              idempotency_key: `category-${categoryName}-${Date.now()}`,
+              idempotency_key: `category-${sanitizeForId(categoryName)}-${Date.now()}`,
               object: {
                 type: 'CATEGORY',
-                id: `#category-${item.id}`,
+                id: `#category-${sanitizeForId(categoryName)}-${item.id}`,
                 category_data: {
                   name: categoryName
                 }
