@@ -8,6 +8,8 @@
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- DYMO Connect Framework -->
+    <script src="https://cdn.jsdelivr.net/gh/dymosoftware/dymo-connect-framework@master/dymo.connect.framework.js"></script>
 </head>
 <body>
     <div id="root"></div>
@@ -181,6 +183,291 @@
                 alert(`Password reset for ${artistsDb[username].name}!\n\nNew password: ${newPassword}\n\nPlease share this with the artist.`);
             };
 
+            // DYMO SDK Integration
+            const [dymoAvailable, setDymoAvailable] = useState(false);
+            const [dymoPrinters, setDymoPrinters] = useState([]);
+            const [selectedPrinter, setSelectedPrinter] = useState('');
+
+            // Check for DYMO Connect on load
+            useEffect(() => {
+                const checkDymo = async () => {
+                    if (typeof dymo !== 'undefined' && dymo.label && dymo.label.framework) {
+                        try {
+                            await dymo.label.framework.init();
+                            const env = await dymo.label.framework.checkEnvironment();
+                            if (env.isFrameworkInstalled && env.isWebServicePresent) {
+                                setDymoAvailable(true);
+                                const printers = await dymo.label.framework.getPrinters();
+                                const labelPrinters = printers.filter(p => p.printerType === 'LabelWriterPrinter');
+                                setDymoPrinters(labelPrinters);
+                                if (labelPrinters.length > 0) {
+                                    setSelectedPrinter(labelPrinters[0].name);
+                                }
+                            }
+                        } catch (e) {
+                            console.log('DYMO not available:', e);
+                        }
+                    }
+                };
+                // Delay check to allow script to load
+                setTimeout(checkDymo, 1000);
+            }, []);
+
+            // DYMO Label XML templates - units in twips (1440 twips = 1 inch)
+            // Wall Card: 3.5" x 2" = 5040 x 2880 twips
+            const createWallLabelXml = (item) => {
+                return `<?xml version="1.0" encoding="utf-8"?>
+<DieCutLabel Version="8.0" Units="twips">
+    <PaperOrientation>Landscape</PaperOrientation>
+    <Id>30256</Id>
+    <PaperName>30256 Shipping</PaperName>
+    <DrawCommands>
+        <RoundRectangle X="0" Y="0" Width="2880" Height="5040" Rx="0" Ry="0"/>
+    </DrawCommands>
+    <ObjectInfo>
+        <TextObject>
+            <Name>Artist</Name>
+            <ForeColor Alpha="255" Red="0" Green="0" Blue="0"/>
+            <BackColor Alpha="0" Red="255" Green="255" Blue="255"/>
+            <LinkedObjectName></LinkedObjectName>
+            <Rotation>Rotation0</Rotation>
+            <IsMirrored>False</IsMirrored>
+            <IsVariable>False</IsVariable>
+            <HorizontalAlignment>Center</HorizontalAlignment>
+            <VerticalAlignment>Top</VerticalAlignment>
+            <TextFitMode>ShrinkToFit</TextFitMode>
+            <UseFullFontHeight>True</UseFullFontHeight>
+            <Verticalized>False</Verticalized>
+            <StyledText>
+                <Element>
+                    <String>${item.artistName}</String>
+                    <Attributes>
+                        <Font Family="Arial" Size="14" Bold="True" Italic="False" Underline="False" Strikeout="False"/>
+                    </Attributes>
+                </Element>
+            </StyledText>
+        </TextObject>
+        <Bounds X="200" Y="200" Width="4640" Height="500"/>
+    </ObjectInfo>
+    <ObjectInfo>
+        <TextObject>
+            <Name>Title</Name>
+            <ForeColor Alpha="255" Red="0" Green="0" Blue="0"/>
+            <BackColor Alpha="0" Red="255" Green="255" Blue="255"/>
+            <LinkedObjectName></LinkedObjectName>
+            <Rotation>Rotation0</Rotation>
+            <IsMirrored>False</IsMirrored>
+            <IsVariable>False</IsVariable>
+            <HorizontalAlignment>Center</HorizontalAlignment>
+            <VerticalAlignment>Middle</VerticalAlignment>
+            <TextFitMode>ShrinkToFit</TextFitMode>
+            <UseFullFontHeight>True</UseFullFontHeight>
+            <Verticalized>False</Verticalized>
+            <StyledText>
+                <Element>
+                    <String>"${item.title}"</String>
+                    <Attributes>
+                        <Font Family="Arial" Size="14" Bold="False" Italic="True" Underline="False" Strikeout="False"/>
+                    </Attributes>
+                </Element>
+            </StyledText>
+        </TextObject>
+        <Bounds X="200" Y="700" Width="4640" Height="600"/>
+    </ObjectInfo>
+    <ObjectInfo>
+        <TextObject>
+            <Name>Medium</Name>
+            <ForeColor Alpha="255" Red="80" Green="80" Blue="80"/>
+            <BackColor Alpha="0" Red="255" Green="255" Blue="255"/>
+            <LinkedObjectName></LinkedObjectName>
+            <Rotation>Rotation0</Rotation>
+            <IsMirrored>False</IsMirrored>
+            <IsVariable>False</IsVariable>
+            <HorizontalAlignment>Center</HorizontalAlignment>
+            <VerticalAlignment>Middle</VerticalAlignment>
+            <TextFitMode>ShrinkToFit</TextFitMode>
+            <UseFullFontHeight>True</UseFullFontHeight>
+            <Verticalized>False</Verticalized>
+            <StyledText>
+                <Element>
+                    <String>${item.medium}</String>
+                    <Attributes>
+                        <Font Family="Arial" Size="12" Bold="False" Italic="False" Underline="False" Strikeout="False"/>
+                    </Attributes>
+                </Element>
+            </StyledText>
+        </TextObject>
+        <Bounds X="200" Y="1300" Width="4640" Height="400"/>
+    </ObjectInfo>
+    <ObjectInfo>
+        <TextObject>
+            <Name>Price</Name>
+            <ForeColor Alpha="255" Red="0" Green="0" Blue="0"/>
+            <BackColor Alpha="0" Red="255" Green="255" Blue="255"/>
+            <LinkedObjectName></LinkedObjectName>
+            <Rotation>Rotation0</Rotation>
+            <IsMirrored>False</IsMirrored>
+            <IsVariable>False</IsVariable>
+            <HorizontalAlignment>Center</HorizontalAlignment>
+            <VerticalAlignment>Middle</VerticalAlignment>
+            <TextFitMode>ShrinkToFit</TextFitMode>
+            <UseFullFontHeight>True</UseFullFontHeight>
+            <Verticalized>False</Verticalized>
+            <StyledText>
+                <Element>
+                    <String>$${parseFloat(item.price).toFixed(2)}</String>
+                    <Attributes>
+                        <Font Family="Arial" Size="14" Bold="True" Italic="False" Underline="False" Strikeout="False"/>
+                    </Attributes>
+                </Element>
+            </StyledText>
+        </TextObject>
+        <Bounds X="200" Y="1700" Width="4640" Height="500"/>
+    </ObjectInfo>
+</DieCutLabel>`;
+            };
+
+            // SKU Label: 2.125" x 1" = 3060 x 1440 twips
+            const createSKULabelXml = (item) => {
+                const sku = item.sku || item.squareId || 'SKU-' + item.id;
+                return `<?xml version="1.0" encoding="utf-8"?>
+<DieCutLabel Version="8.0" Units="twips">
+    <PaperOrientation>Landscape</PaperOrientation>
+    <Id>30336</Id>
+    <PaperName>30336 Small Multipurpose</PaperName>
+    <DrawCommands>
+        <RoundRectangle X="0" Y="0" Width="1440" Height="3060" Rx="0" Ry="0"/>
+    </DrawCommands>
+    <ObjectInfo>
+        <TextObject>
+            <Name>Category</Name>
+            <ForeColor Alpha="255" Red="0" Green="0" Blue="0"/>
+            <BackColor Alpha="0" Red="255" Green="255" Blue="255"/>
+            <LinkedObjectName></LinkedObjectName>
+            <Rotation>Rotation0</Rotation>
+            <IsMirrored>False</IsMirrored>
+            <IsVariable>False</IsVariable>
+            <HorizontalAlignment>Center</HorizontalAlignment>
+            <VerticalAlignment>Top</VerticalAlignment>
+            <TextFitMode>ShrinkToFit</TextFitMode>
+            <UseFullFontHeight>True</UseFullFontHeight>
+            <Verticalized>False</Verticalized>
+            <StyledText>
+                <Element>
+                    <String>${item.category}</String>
+                    <Attributes>
+                        <Font Family="Arial" Size="6" Bold="True" Italic="False" Underline="False" Strikeout="False"/>
+                    </Attributes>
+                </Element>
+            </StyledText>
+        </TextObject>
+        <Bounds X="100" Y="50" Width="2860" Height="180"/>
+    </ObjectInfo>
+    <ObjectInfo>
+        <TextObject>
+            <Name>Title</Name>
+            <ForeColor Alpha="255" Red="0" Green="0" Blue="0"/>
+            <BackColor Alpha="0" Red="255" Green="255" Blue="255"/>
+            <LinkedObjectName></LinkedObjectName>
+            <Rotation>Rotation0</Rotation>
+            <IsMirrored>False</IsMirrored>
+            <IsVariable>False</IsVariable>
+            <HorizontalAlignment>Center</HorizontalAlignment>
+            <VerticalAlignment>Middle</VerticalAlignment>
+            <TextFitMode>ShrinkToFit</TextFitMode>
+            <UseFullFontHeight>True</UseFullFontHeight>
+            <Verticalized>False</Verticalized>
+            <StyledText>
+                <Element>
+                    <String>${item.title}</String>
+                    <Attributes>
+                        <Font Family="Arial" Size="7" Bold="False" Italic="False" Underline="False" Strikeout="False"/>
+                    </Attributes>
+                </Element>
+            </StyledText>
+        </TextObject>
+        <Bounds X="100" Y="230" Width="2860" Height="200"/>
+    </ObjectInfo>
+    <ObjectInfo>
+        <TextObject>
+            <Name>Price</Name>
+            <ForeColor Alpha="255" Red="0" Green="0" Blue="0"/>
+            <BackColor Alpha="0" Red="255" Green="255" Blue="255"/>
+            <LinkedObjectName></LinkedObjectName>
+            <Rotation>Rotation0</Rotation>
+            <IsMirrored>False</IsMirrored>
+            <IsVariable>False</IsVariable>
+            <HorizontalAlignment>Center</HorizontalAlignment>
+            <VerticalAlignment>Middle</VerticalAlignment>
+            <TextFitMode>ShrinkToFit</TextFitMode>
+            <UseFullFontHeight>True</UseFullFontHeight>
+            <Verticalized>False</Verticalized>
+            <StyledText>
+                <Element>
+                    <String>$${parseFloat(item.price).toFixed(2)}</String>
+                    <Attributes>
+                        <Font Family="Arial" Size="8" Bold="True" Italic="False" Underline="False" Strikeout="False"/>
+                    </Attributes>
+                </Element>
+            </StyledText>
+        </TextObject>
+        <Bounds X="100" Y="430" Width="2860" Height="200"/>
+    </ObjectInfo>
+    <ObjectInfo>
+        <BarcodeObject>
+            <Name>Barcode</Name>
+            <ForeColor Alpha="255" Red="0" Green="0" Blue="0"/>
+            <BackColor Alpha="0" Red="255" Green="255" Blue="255"/>
+            <LinkedObjectName></LinkedObjectName>
+            <Rotation>Rotation0</Rotation>
+            <IsMirrored>False</IsMirrored>
+            <IsVariable>False</IsVariable>
+            <Text>${sku}</Text>
+            <Type>Code128Auto</Type>
+            <Size>Small</Size>
+            <TextPosition>Bottom</TextPosition>
+            <TextFont Family="Arial" Size="5" Bold="False" Italic="False" Underline="False" Strikeout="False"/>
+            <CheckSumFont Family="Arial" Size="5" Bold="False" Italic="False" Underline="False" Strikeout="False"/>
+            <TextEmbedding>None</TextEmbedding>
+            <ECLevel>0</ECLevel>
+            <HorizontalAlignment>Center</HorizontalAlignment>
+            <QuietZonesPadding Left="0" Top="0" Right="0" Bottom="0"/>
+        </BarcodeObject>
+        <Bounds X="100" Y="650" Width="2860" Height="700"/>
+    </ObjectInfo>
+</DieCutLabel>`;
+            };
+
+            // Print using DYMO SDK
+            const printWithDymo = async (items, labelType) => {
+                if (!dymoAvailable || !selectedPrinter) {
+                    alert('DYMO printer not available. Using browser print instead.');
+                    if (labelType === 'wall') {
+                        printWallLabels(items);
+                    } else {
+                        printSKULabels(items);
+                    }
+                    return;
+                }
+
+                try {
+                    for (const item of items) {
+                        const labelXml = labelType === 'wall' ? createWallLabelXml(item) : createSKULabelXml(item);
+                        const label = dymo.label.framework.openLabelXml(labelXml);
+                        await dymo.label.framework.printLabel(selectedPrinter, '', label);
+                    }
+                    alert(`Printed ${items.length} ${labelType} label(s) to ${selectedPrinter}`);
+                } catch (e) {
+                    console.error('DYMO print error:', e);
+                    alert('DYMO print failed: ' + e.message + '\nFalling back to browser print.');
+                    if (labelType === 'wall') {
+                        printWallLabels(items);
+                    } else {
+                        printSKULabels(items);
+                    }
+                }
+            };
+
             const printSKULabels = (items) => {
                 const printWindow = window.open('', '_blank');
                 const labelsHTML = items.map((item, index) => {
@@ -196,7 +483,7 @@
                 printWindow.document.write(`<!DOCTYPE html><html><head><title>SKU Labels</title>
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"><\/script>
 <style>
-@page { size: 2.125in 1in; margin: 0.62in 0.06in 0 0.06in; }
+@page { size: 2.125in 1in; margin: 0.52in 0.06in 0 0.06in; }
 * { margin: 0; padding: 0; box-sizing: border-box; }
 html, body { font-family: Arial, sans-serif; margin: 0; padding: 0; }
 .label { 
@@ -610,20 +897,71 @@ html, body { font-family: 'Aptos', Calibri, Arial, sans-serif; margin: 0; paddin
                                     {processedSubmissions.length > 0 && (
                                         <div className="bg-gradient-to-r from-purple-50 to-pink-50 border-2 border-purple-300 rounded-lg p-6 mb-6">
                                             <h3 className="text-lg font-bold mb-4">🖨️ Print Labels for {processedSubmissions.length} items</h3>
-                                            <p className="text-sm text-gray-600 mb-4">Each button opens a print-ready window. Select the correct Dymo printer in the print dialog.</p>
+                                            
+                                            {dymoAvailable ? (
+                                                <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+                                                    <p className="text-green-800 font-medium">✅ DYMO Connect detected!</p>
+                                                    <div className="flex items-center gap-3 mt-2">
+                                                        <label className="text-sm text-green-700">Printer:</label>
+                                                        <select 
+                                                            value={selectedPrinter} 
+                                                            onChange={(e) => setSelectedPrinter(e.target.value)}
+                                                            className="px-3 py-1 border border-green-300 rounded text-sm"
+                                                        >
+                                                            {dymoPrinters.map(p => (
+                                                                <option key={p.name} value={p.name}>{p.name}</option>
+                                                            ))}
+                                                        </select>
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                <p className="text-sm text-gray-600 mb-4">
+                                                    💡 Install <a href="https://download.dymo.com/dymo/Software/Win/DCDSetup1.4.5.1.exe" className="text-blue-600 underline" target="_blank">DYMO Connect</a> for better label printing, or use browser print below.
+                                                </p>
+                                            )}
+                                            
                                             <div className="flex flex-wrap gap-3">
-                                                <button onClick={() => printSKULabels(processedSubmissions)} className="flex items-center space-x-2 px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white font-semibold rounded-lg">🏷️ <span>Print All SKU Stickers</span></button>
-                                                <button onClick={() => printWallLabels(processedSubmissions)} className="flex items-center space-x-2 px-6 py-3 bg-pink-600 hover:bg-pink-700 text-white font-semibold rounded-lg">🖼️ <span>Print All Wall Labels</span></button>
+                                                {dymoAvailable ? (
+                                                    <>
+                                                        <button onClick={() => printWithDymo(processedSubmissions, 'sku')} className="flex items-center space-x-2 px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white font-semibold rounded-lg">🏷️ <span>Print All SKU (DYMO)</span></button>
+                                                        <button onClick={() => printWithDymo(processedSubmissions, 'wall')} className="flex items-center space-x-2 px-6 py-3 bg-pink-600 hover:bg-pink-700 text-white font-semibold rounded-lg">🖼️ <span>Print All Wall (DYMO)</span></button>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <button onClick={() => printSKULabels(processedSubmissions)} className="flex items-center space-x-2 px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white font-semibold rounded-lg">🏷️ <span>Print All SKU Stickers</span></button>
+                                                        <button onClick={() => printWallLabels(processedSubmissions)} className="flex items-center space-x-2 px-6 py-3 bg-pink-600 hover:bg-pink-700 text-white font-semibold rounded-lg">🖼️ <span>Print All Wall Labels</span></button>
+                                                    </>
+                                                )}
                                             </div>
-                                            <p className="text-xs text-gray-500 mt-4"><strong>Tip:</strong> SKU → Dymo 550 Turbo (1"x2⅛") | Wall → Dymo 550 (Business Card)</p>
+                                            
+                                            {dymoAvailable && (
+                                                <details className="mt-4">
+                                                    <summary className="text-xs text-gray-500 cursor-pointer">Browser print (fallback)</summary>
+                                                    <div className="flex flex-wrap gap-2 mt-2">
+                                                        <button onClick={() => printSKULabels(processedSubmissions)} className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 text-sm rounded">🏷️ Browser SKU</button>
+                                                        <button onClick={() => printWallLabels(processedSubmissions)} className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 text-sm rounded">🖼️ Browser Wall</button>
+                                                    </div>
+                                                </details>
+                                            )}
+                                            
+                                            <p className="text-xs text-gray-500 mt-4"><strong>Tip:</strong> SKU → 1"×2⅛" labels | Wall → 2"×3.5" labels</p>
                                         </div>
                                     )}
                                     <div className="space-y-4">{processedSubmissions.length === 0 ? <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500">No processed items. Upload approved items first.</div> : processedSubmissions.map(sub => (
                                         <div key={sub.id} className="bg-white rounded-lg shadow p-4 flex justify-between items-center">
                                             <div><h3 className="font-bold">{sub.title}</h3><p className="text-sm text-gray-600">by {sub.artistName} • ${sub.price}</p><p className="text-xs text-gray-400">SKU: {sub.sku || sub.squareId || 'SKU-' + sub.id}</p></div>
                                             <div className="flex space-x-2">
-                                                <button onClick={() => printSKULabels([sub])} className="px-3 py-1 bg-purple-100 hover:bg-purple-200 text-purple-700 text-sm rounded">🏷️ SKU</button>
-                                                <button onClick={() => printWallLabels([sub])} className="px-3 py-1 bg-pink-100 hover:bg-pink-200 text-pink-700 text-sm rounded">🖼️ Wall</button>
+                                                {dymoAvailable ? (
+                                                    <>
+                                                        <button onClick={() => printWithDymo([sub], 'sku')} className="px-3 py-1 bg-purple-100 hover:bg-purple-200 text-purple-700 text-sm rounded">🏷️ SKU</button>
+                                                        <button onClick={() => printWithDymo([sub], 'wall')} className="px-3 py-1 bg-pink-100 hover:bg-pink-200 text-pink-700 text-sm rounded">🖼️ Wall</button>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <button onClick={() => printSKULabels([sub])} className="px-3 py-1 bg-purple-100 hover:bg-purple-200 text-purple-700 text-sm rounded">🏷️ SKU</button>
+                                                        <button onClick={() => printWallLabels([sub])} className="px-3 py-1 bg-pink-100 hover:bg-pink-200 text-pink-700 text-sm rounded">🖼️ Wall</button>
+                                                    </>
+                                                )}
                                             </div>
                                         </div>
                                     ))}</div>
