@@ -540,8 +540,8 @@ window.onload = function() {
                     </div>`;
                 }).join('');
                 printWindow.document.write(`<!DOCTYPE html><html><head><title>Wall Labels</title><style>
-@page { size: 3.5in 2in; margin: 0.5in 0.15in 0.2in 0.15in; }
-@media print { @page { margin: 0.5in 0.15in 0.2in 0.15in; } }
+@page { size: 3.5in 2in; margin: 0.5in 0.15in 0.2in 0.28in; }
+@media print { @page { margin: 0.5in 0.15in 0.2in 0.28in; } }
 * { margin: 0; padding: 0; box-sizing: border-box; }
 html, body { font-family: 'Aptos', Calibri, Arial, sans-serif; margin: 0; padding: 0; }
 .label { 
@@ -896,7 +896,8 @@ html, body { font-family: 'Aptos', Calibri, Arial, sans-serif; margin: 0; paddin
                                             {sub.description && <p className="text-sm text-gray-600 mb-4 italic">{sub.description}</p>}
                                             <div className="flex space-x-3">
                                                 <button onClick={() => handleApprove(sub.id)} className="flex items-center space-x-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg">✅ <span>Approve</span></button>
-                                                <button onClick={() => { const r = prompt('Reason:'); if (r) handleReject(sub.id, r); }} className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg">Reject</button>
+                                                <button onClick={() => { const r = prompt('Reason:'); if (r) handleReject(sub.id, r); }} className="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg">⏸️ Reject</button>
+                                                <button onClick={() => { if (confirm('Delete this item from app?')) { const updated = submissions.filter(s => s.id !== sub.id); saveSubmissions(updated); }}} className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg">🗑️ Delete</button>
                                             </div>
                                         </div>
                                     ))}
@@ -923,17 +924,15 @@ html, body { font-family: 'Aptos', Calibri, Arial, sans-serif; margin: 0; paddin
                                                 {selectedForUpload.size > 0 && (
                                                     <button 
                                                         onClick={() => {
-                                                            if (confirm(`Remove ${selectedForUpload.size} item(s) from upload queue? They will go back to pending.`)) {
-                                                                const updatedSubmissions = submissions.map(s => 
-                                                                    selectedForUpload.has(s.id) ? { ...s, status: 'pending' } : s
-                                                                );
+                                                            if (confirm(`Delete ${selectedForUpload.size} item(s) from app? This removes them completely from the app.`)) {
+                                                                const updatedSubmissions = submissions.filter(s => !selectedForUpload.has(s.id));
                                                                 saveSubmissions(updatedSubmissions);
                                                                 setSelectedForUpload(new Set());
                                                             }
                                                         }}
                                                         className="flex items-center space-x-2 px-6 py-3 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-lg"
                                                     >
-                                                        🗑️ <span>Remove Selected</span>
+                                                        🗑️ <span>Delete from App</span>
                                                     </button>
                                                 )}
                                             </div>
@@ -1033,20 +1032,32 @@ html, body { font-family: 'Aptos', Calibri, Arial, sans-serif; margin: 0; paddin
                                                     );
                                                 })()}
                                                 {selectedForPrint.size > 0 && (
-                                                    <button 
-                                                        onClick={() => {
-                                                            if (confirm(`Remove ${selectedForPrint.size} item(s) from print queue?`)) {
-                                                                const updatedSubmissions = submissions.map(s => 
-                                                                    selectedForPrint.has(s.id) ? { ...s, status: 'approved' } : s
-                                                                );
-                                                                saveSubmissions(updatedSubmissions);
-                                                                setSelectedForPrint(new Set());
-                                                            }
-                                                        }}
-                                                        className="flex items-center space-x-2 px-6 py-3 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-lg"
-                                                    >
-                                                        🗑️ <span>Remove Selected</span>
-                                                    </button>
+                                                    <>
+                                                        <button 
+                                                            onClick={() => {
+                                                                if (confirm(`Mark ${selectedForPrint.size} item(s) as complete? They will be removed from all queues but remain in Square.`)) {
+                                                                    const updatedSubmissions = submissions.filter(s => !selectedForPrint.has(s.id));
+                                                                    saveSubmissions(updatedSubmissions);
+                                                                    setSelectedForPrint(new Set());
+                                                                }
+                                                            }}
+                                                            className="flex items-center space-x-2 px-6 py-3 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-lg"
+                                                        >
+                                                            ✅ <span>Mark Complete</span>
+                                                        </button>
+                                                        <button 
+                                                            onClick={() => {
+                                                                if (confirm(`Delete ${selectedForPrint.size} item(s) from app? This only removes them from the app queues, NOT from Square.`)) {
+                                                                    const updatedSubmissions = submissions.filter(s => !selectedForPrint.has(s.id));
+                                                                    saveSubmissions(updatedSubmissions);
+                                                                    setSelectedForPrint(new Set());
+                                                                }
+                                                            }}
+                                                            className="flex items-center space-x-2 px-6 py-3 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-lg"
+                                                        >
+                                                            🗑️ <span>Delete from App</span>
+                                                        </button>
+                                                    </>
                                                 )}
                                             </div>
                                             
