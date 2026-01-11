@@ -99,6 +99,20 @@
             }
         };
 
+        const deleteFromSquare = async (itemId) => {
+            try {
+                const response = await fetch('/api/square-delete', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ itemId })
+                });
+                return await response.json();
+            } catch (error) {
+                console.error('Delete error:', error);
+                return { success: false, error: error.message };
+            }
+        };
+
         // Print label functions
         const printSKULabels = (items) => {
             const printWindow = window.open('', '_blank');
@@ -173,6 +187,10 @@ html, body { font-family: 'Aptos', Calibri, Arial, sans-serif; }
             const [loadingInventory, setLoadingInventory] = useState(false);
             const [selectedItems, setSelectedItems] = useState(new Set());
             
+            // Archive state
+            const [archive, setArchive] = useState([]);
+            const [archiveSearch, setArchiveSearch] = useState('');
+            
             // Form state
             const [showAddForm, setShowAddForm] = useState(false);
             const [editingItem, setEditingItem] = useState(null);
@@ -186,23 +204,28 @@ html, body { font-family: 'Aptos', Calibri, Arial, sans-serif; }
             const [showAddArtist, setShowAddArtist] = useState(false);
             const [newArtist, setNewArtist] = useState({ firstName: '', lastName: '', type: 'coop', customRate: '' });
             const [showPasswords, setShowPasswords] = useState(false);
-            const [editingArtist, setEditingArtist] = useState(null);
             
             // Password change state
             const [showPasswordChange, setShowPasswordChange] = useState(false);
             const [passwordForm, setPasswordForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
             const [passwordError, setPasswordError] = useState('');
 
-            // Load artists from KV on startup
+            // Load artists and archive from KV on startup
             useEffect(() => {
-                const loadArtists = async () => {
-                    const savedArtists = await kvGet('cbg-artists');
+                const loadData = async () => {
+                    const [savedArtists, savedArchive] = await Promise.all([
+                        kvGet('cbg-artists'),
+                        kvGet('cbg-archive')
+                    ]);
                     if (savedArtists && typeof savedArtists === 'object') {
                         setArtistsDb(savedArtists);
                     }
+                    if (Array.isArray(savedArchive)) {
+                        setArchive(savedArchive);
+                    }
                     setLoading(false);
                 };
-                loadArtists();
+                loadData();
             }, []);
 
             // Load inventory when user logs in
@@ -229,6 +252,11 @@ html, body { font-family: 'Aptos', Calibri, Arial, sans-serif; }
                 await kvSet('cbg-artists', newArtists);
             };
 
+            const saveArchive = async (newArchive) => {
+                setArchive(newArchive);
+                await kvSet('cbg-archive', newArchive);
+            };
+
             // Auth handlers
             const handleLogin = (e) => {
                 e.preventDefault();
@@ -248,6 +276,7 @@ html, body { font-family: 'Aptos', Calibri, Arial, sans-serif; }
                 setInventory([]);
                 setSelectedItems(new Set());
                 setSearchQuery('');
+                setActiveTab('inventory');
             };
 
             // Password change
@@ -285,7 +314,6 @@ html, body { font-family: 'Aptos', Calibri, Arial, sans-serif; }
                 const newItem = {
                     id: Date.now(),
                     artistName: currentUser.name,
-                    category: `${currentUser.name} - ${formData.type}`,
                     ...formData,
                     dimensions: `${formData.height}" x ${formData.width}"`
                 };
@@ -296,7 +324,7 @@ html, body { font-family: 'Aptos', Calibri, Arial, sans-serif; }
                     alert('✅ Item added to Square successfully!');
                     setFormData({ title: '', type: '', medium: '', description: '', height: '', width: '', price: '', quantity: '1' });
                     setShowAddForm(false);
-                    loadInventory(); // Refresh from Square
+                    loadInventory();
                 } else {
                     alert('❌ Failed to add item: ' + (result.error || 'Unknown error'));
                 }
@@ -310,8 +338,7 @@ html, body { font-family: 'Aptos', Calibri, Arial, sans-serif; }
                 const updatedItem = {
                     ...editingItem,
                     ...formData,
-                    dimensions: `${formData.height}" x ${formData.width}"`,
-                    category: `${editingItem.artistName} - ${formData.type}`
+                    dimensions: `${formData.height}" x ${formData.width}"`
                 };
                 
                 const result = await uploadToSquare([updatedItem]);
@@ -339,6 +366,67 @@ html, body { font-family: 'Aptos', Calibri, Arial, sans-serif; }
                     quantity: '1'
                 });
                 setEditingItem(item);
+            };
+
+            // Archive handler
+            const handleArchive = async (item) => {
+                if (!confirm(`Archive "${item.title}"?\n\nThis will remove it from Square and save it to the archive.`)) {
+                    return;
+                }
+                
+                setProcessing(true);
+                
+                // Delete from Square
+                const deleteResult = await deleteFromSquare(item.squareId);
+                
+                if (deleteResult.success) {
+                    // Save to archive
+                    const archivedItem = {
+                        ...item,
+                        archivedAt: new Date().toISOString(),
+                        archivedBy: currentUser.name
+                    };
+                    const newArchive = [...archive, archivedItem];
+                    await saveArchive(newArchive);
+                    
+                    alert('✅ Item archived successfully!');
+                    loadInventory();
+                } else {
+                    alert('❌ Failed to archive: ' + (deleteResult.error || 'Unknown error'));
+                }
+                
+                setProcessing(false);
+            };
+
+            // Restore from archive (admin only)
+            const handleRestore = async (item) => {
+                if (!confirm(`Restore "${item.title}" to Square?`)) {
+                    return;
+                }
+                
+                setProcessing(true);
+                
+                // Remove archive-specific fields and re-upload
+                const { archivedAt, archivedBy, squareId, variationId, ...itemData } = item;
+                const restoreItem = {
+                    ...itemData,
+                    id: Date.now()
+                };
+                
+                const result = await uploadToSquare([restoreItem]);
+                
+                if (result.success) {
+                    // Remove from archive
+                    const newArchive = archive.filter(a => a.squareId !== item.squareId);
+                    await saveArchive(newArchive);
+                    
+                    alert('✅ Item restored to Square!');
+                    loadInventory();
+                } else {
+                    alert('❌ Failed to restore: ' + (result.error || 'Unknown error'));
+                }
+                
+                setProcessing(false);
             };
 
             // Print handlers
@@ -390,6 +478,18 @@ html, body { font-family: 'Aptos', Calibri, Arial, sans-serif; }
                     item.sku?.toLowerCase().includes(q)
                 );
             }, [inventory, searchQuery]);
+
+            // Filter archive by search
+            const filteredArchive = useMemo(() => {
+                if (!archiveSearch.trim()) return archive;
+                const q = archiveSearch.toLowerCase();
+                return archive.filter(item => 
+                    item.title?.toLowerCase().includes(q) ||
+                    item.artistName?.toLowerCase().includes(q) ||
+                    item.type?.toLowerCase().includes(q) ||
+                    item.sku?.toLowerCase().includes(q)
+                );
+            }, [archive, archiveSearch]);
 
             // Toggle selection
             const toggleSelect = (id) => {
@@ -628,15 +728,23 @@ html, body { font-family: 'Aptos', Calibri, Arial, sans-serif; }
                                 onClick={() => setActiveTab('inventory')} 
                                 className={`px-6 py-3 font-medium ${activeTab === 'inventory' ? 'border-b-2 border-orange-600 text-orange-600' : 'text-gray-600'}`}
                             >
-                                📦 My Inventory ({inventory.length})
+                                📦 {currentUser.type === 'admin' ? 'All Inventory' : 'My Inventory'} ({inventory.length})
                             </button>
                             {currentUser.type === 'admin' && (
-                                <button 
-                                    onClick={() => setActiveTab('artists')} 
-                                    className={`px-6 py-3 font-medium ${activeTab === 'artists' ? 'border-b-2 border-orange-600 text-orange-600' : 'text-gray-600'}`}
-                                >
-                                    👥 Artists
-                                </button>
+                                <>
+                                    <button 
+                                        onClick={() => setActiveTab('archive')} 
+                                        className={`px-6 py-3 font-medium ${activeTab === 'archive' ? 'border-b-2 border-orange-600 text-orange-600' : 'text-gray-600'}`}
+                                    >
+                                        📦 Archive ({archive.length})
+                                    </button>
+                                    <button 
+                                        onClick={() => setActiveTab('artists')} 
+                                        className={`px-6 py-3 font-medium ${activeTab === 'artists' ? 'border-b-2 border-orange-600 text-orange-600' : 'text-gray-600'}`}
+                                    >
+                                        👥 Artists
+                                    </button>
+                                </>
                             )}
                         </div>
                     </div>
@@ -733,6 +841,60 @@ html, body { font-family: 'Aptos', Calibri, Arial, sans-serif; }
                                                     <button onClick={() => startEdit(item)} className="px-3 py-1 bg-blue-100 hover:bg-blue-200 text-blue-700 text-sm rounded">✏️ Edit</button>
                                                     <button onClick={() => printSKULabels([item])} className="px-3 py-1 bg-purple-100 hover:bg-purple-200 text-purple-700 text-sm rounded">🏷️</button>
                                                     <button onClick={() => printWallLabels([item])} className="px-3 py-1 bg-pink-100 hover:bg-pink-200 text-pink-700 text-sm rounded">🖼️</button>
+                                                    <button onClick={() => handleArchive(item)} disabled={processing} className="px-3 py-1 bg-red-100 hover:bg-red-200 text-red-700 text-sm rounded">🗑️</button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {activeTab === 'archive' && currentUser.type === 'admin' && (
+                            <div>
+                                {/* Archive Toolbar */}
+                                <div className="bg-white rounded-lg shadow p-4 mb-6">
+                                    <div className="flex gap-4 items-center">
+                                        <div className="flex-1 max-w-md">
+                                            <input 
+                                                type="text" 
+                                                placeholder="🔍 Search archived items..." 
+                                                value={archiveSearch}
+                                                onChange={(e) => setArchiveSearch(e.target.value)}
+                                                className="w-full px-4 py-2 border rounded-lg"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Archive List */}
+                                {filteredArchive.length === 0 ? (
+                                    <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500">
+                                        {archiveSearch ? 'No archived items match your search' : 'No archived items yet.'}
+                                    </div>
+                                ) : (
+                                    <div className="space-y-2">
+                                        {filteredArchive.map(item => (
+                                            <div key={item.squareId || item.id} className="bg-white rounded-lg shadow p-4 flex items-center gap-4">
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="flex items-center gap-2">
+                                                        <h3 className="font-bold truncate">{item.title}</h3>
+                                                        <span className="text-gray-500 text-xs">📦 Archived</span>
+                                                    </div>
+                                                    <p className="text-sm text-gray-600 truncate">
+                                                        <span className="font-medium">{item.artistName}</span> • {item.type} • {item.medium}
+                                                    </p>
+                                                    <p className="text-xs text-gray-400">
+                                                        SKU: {item.sku} • Archived {new Date(item.archivedAt).toLocaleDateString()} by {item.archivedBy}
+                                                    </p>
+                                                </div>
+                                                <div className="text-right">
+                                                    <div className="font-bold text-lg">${parseFloat(item.price).toFixed(2)}</div>
+                                                </div>
+                                                <div className="flex gap-2">
+                                                    <button onClick={() => handleRestore(item)} disabled={processing} className="px-3 py-1 bg-green-100 hover:bg-green-200 text-green-700 text-sm rounded">
+                                                        ♻️ Restore
+                                                    </button>
                                                 </div>
                                             </div>
                                         ))}
