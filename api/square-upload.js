@@ -1,5 +1,6 @@
 // API endpoint to upload/update items in Square
 // POST: Create new items or update existing ones
+// Sets Category as "Artist Name - Type" and Reporting Category as "Artist Name"
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -18,7 +19,11 @@ export default async function handler(req, res) {
     const results = [];
 
     for (const item of items) {
-      const category = item.category || `${item.artistName} - ${item.type}`;
+      // Category format: "Artist Name - Type"
+      const categoryName = `${item.artistName} - ${item.type}`;
+      // Reporting category: just the artist name
+      const reportingCategoryName = item.artistName;
+      
       const dimensions = item.dimensions || `${item.height}" x ${item.width}"`;
       
       // Build description with metadata
@@ -38,7 +43,6 @@ export default async function handler(req, res) {
           object: {
             type: 'ITEM',
             id: item.squareId,
-            version: item.version, // Square requires version for updates
             item_data: {
               name: item.title,
               description: description
@@ -94,6 +98,104 @@ export default async function handler(req, res) {
 
       } else {
         // CREATE new item
+        
+        // First, find or create the category
+        let categoryId = null;
+        const searchResponse = await fetch('https://connect.squareup.com/v2/catalog/search', {
+          method: 'POST',
+          headers: {
+            'Square-Version': '2024-12-18',
+            'Authorization': `Bearer ${SQUARE_ACCESS_TOKEN}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            object_types: ['CATEGORY'],
+            query: {
+              exact_query: {
+                attribute_name: 'name',
+                attribute_value: categoryName
+              }
+            }
+          })
+        });
+
+        const searchData = await searchResponse.json();
+        categoryId = searchData.objects?.[0]?.id;
+
+        // Create category if it doesn't exist
+        if (!categoryId) {
+          const catResponse = await fetch('https://connect.squareup.com/v2/catalog/object', {
+            method: 'POST',
+            headers: {
+              'Square-Version': '2024-12-18',
+              'Authorization': `Bearer ${SQUARE_ACCESS_TOKEN}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              idempotency_key: `cat-${categoryName.replace(/\s/g, '-')}-${Date.now()}`,
+              object: {
+                type: 'CATEGORY',
+                id: `#cat-${item.id}`,
+                category_data: {
+                  name: categoryName
+                }
+              }
+            })
+          });
+
+          const catData = await catResponse.json();
+          categoryId = catData.catalog_object?.id;
+        }
+
+        // Find or create the reporting category
+        let reportingCategoryId = null;
+        const reportingSearchResponse = await fetch('https://connect.squareup.com/v2/catalog/search', {
+          method: 'POST',
+          headers: {
+            'Square-Version': '2024-12-18',
+            'Authorization': `Bearer ${SQUARE_ACCESS_TOKEN}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            object_types: ['CATEGORY'],
+            query: {
+              exact_query: {
+                attribute_name: 'name',
+                attribute_value: reportingCategoryName
+              }
+            }
+          })
+        });
+
+        const reportingSearchData = await reportingSearchResponse.json();
+        reportingCategoryId = reportingSearchData.objects?.[0]?.id;
+
+        // Create reporting category if it doesn't exist
+        if (!reportingCategoryId) {
+          const reportingCatResponse = await fetch('https://connect.squareup.com/v2/catalog/object', {
+            method: 'POST',
+            headers: {
+              'Square-Version': '2024-12-18',
+              'Authorization': `Bearer ${SQUARE_ACCESS_TOKEN}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              idempotency_key: `repcat-${reportingCategoryName.replace(/\s/g, '-')}-${Date.now()}`,
+              object: {
+                type: 'CATEGORY',
+                id: `#repcat-${item.id}`,
+                category_data: {
+                  name: reportingCategoryName
+                }
+              }
+            })
+          });
+
+          const reportingCatData = await reportingCatResponse.json();
+          reportingCategoryId = reportingCatData.catalog_object?.id;
+        }
+
+        // Build item data
         const itemData = {
           idempotency_key: `item-${item.id}-${Date.now()}`,
           object: {
@@ -102,7 +204,8 @@ export default async function handler(req, res) {
             item_data: {
               name: item.title,
               description: description,
-              categories: [], // Will be set after we find/create category
+              categories: categoryId ? [{ id: categoryId }] : [],
+              reporting_category: reportingCategoryId ? { id: reportingCategoryId } : undefined,
               variations: [
                 {
                   type: 'ITEM_VARIATION',
@@ -121,58 +224,6 @@ export default async function handler(req, res) {
             }
           }
         };
-
-        // First, find or create the category
-        const searchResponse = await fetch('https://connect.squareup.com/v2/catalog/search', {
-          method: 'POST',
-          headers: {
-            'Square-Version': '2024-12-18',
-            'Authorization': `Bearer ${SQUARE_ACCESS_TOKEN}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            object_types: ['CATEGORY'],
-            query: {
-              exact_query: {
-                attribute_name: 'name',
-                attribute_value: category
-              }
-            }
-          })
-        });
-
-        const searchData = await searchResponse.json();
-        let categoryId = searchData.objects?.[0]?.id;
-
-        // Create category if it doesn't exist
-        if (!categoryId) {
-          const catResponse = await fetch('https://connect.squareup.com/v2/catalog/object', {
-            method: 'POST',
-            headers: {
-              'Square-Version': '2024-12-18',
-              'Authorization': `Bearer ${SQUARE_ACCESS_TOKEN}`,
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-              idempotency_key: `cat-${category}-${Date.now()}`,
-              object: {
-                type: 'CATEGORY',
-                id: `#cat-${item.id}`,
-                category_data: {
-                  name: category
-                }
-              }
-            })
-          });
-
-          const catData = await catResponse.json();
-          categoryId = catData.catalog_object?.id;
-        }
-
-        // Add category to item if we have one
-        if (categoryId) {
-          itemData.object.item_data.categories = [{ id: categoryId }];
-        }
 
         const response = await fetch('https://connect.squareup.com/v2/catalog/object', {
           method: 'POST',
@@ -199,7 +250,7 @@ export default async function handler(req, res) {
           squareId: data.catalog_object?.id,
           variationId: data.catalog_object?.item_data?.variations?.[0]?.id,
           sku: sku,
-          category: category,
+          category: categoryName,
           success: true,
           action: 'created'
         });
