@@ -36,7 +36,10 @@
             'paige.smith-wyatt': { name: 'Paige Smith-Wyatt', type: 'consignment', rate: 50, password: 'temp123', active: true },
             'chris.turri': { name: 'Chris Turri', type: 'special', rate: 30, password: 'temp123', active: true },
             'bc.nowlin': { name: 'BC Nowlin', type: 'special', rate: 40, password: 'temp123', active: true },
-            'admin': { name: 'Admin', type: 'admin', rate: 0, password: 'admin123', active: true }
+            'admin': { name: 'Admin', type: 'admin', rate: 0, password: 'admin123', active: true },
+            'admin1': { name: '', type: 'subadmin', rate: 0, password: 'temp123', active: true, needsSetup: true },
+            'admin2': { name: '', type: 'subadmin', rate: 0, password: 'temp123', active: true, needsSetup: true },
+            'admin3': { name: '', type: 'subadmin', rate: 0, password: 'temp123', active: true, needsSetup: true }
         };
 
         const ARTWORK_TYPES = ['Painting', 'Drawing', 'Print', 'Card', 'Ornaments', 'Photography', 'Ceramics', 'Glass', 'Jewelry', 'Mixed Media', 'Wood', 'Books'];
@@ -169,6 +172,11 @@ html, body { font-family: 'Aptos', Calibri, Arial, sans-serif; }
             printWindow.document.close();
         };
 
+        // Helper to check if user is any type of admin
+        const isAdmin = (user) => user && (user.type === 'admin' || user.type === 'subadmin');
+        const isMainAdmin = (user) => user && user.type === 'admin';
+        const isSubAdmin = (user) => user && user.type === 'subadmin';
+
         // Main App Component
         function InventoryPortal() {
             // Auth state
@@ -176,6 +184,11 @@ html, body { font-family: 'Aptos', Calibri, Arial, sans-serif; }
             const [loginForm, setLoginForm] = useState({ username: '', password: '', showPassword: false });
             const [loginError, setLoginError] = useState('');
             const [artistsDb, setArtistsDb] = useState(INITIAL_ARTISTS);
+            
+            // Setup state for new sub-admins
+            const [showSetup, setShowSetup] = useState(false);
+            const [setupForm, setSetupForm] = useState({ name: '', newPassword: '', confirmPassword: '' });
+            const [setupError, setSetupError] = useState('');
             
             // UI state
             const [loading, setLoading] = useState(true);
@@ -228,17 +241,17 @@ html, body { font-family: 'Aptos', Calibri, Arial, sans-serif; }
                 loadData();
             }, []);
 
-            // Load inventory when user logs in
+            // Load inventory when user logs in (after setup if needed)
             useEffect(() => {
-                if (currentUser) {
+                if (currentUser && !showSetup) {
                     loadInventory();
                 }
-            }, [currentUser]);
+            }, [currentUser, showSetup]);
 
             const loadInventory = async () => {
                 setLoadingInventory(true);
                 try {
-                    const artistName = currentUser.type === 'admin' ? null : currentUser.name;
+                    const artistName = isAdmin(currentUser) ? null : currentUser.name;
                     const items = await fetchSquareInventory(artistName);
                     setInventory(items);
                 } catch (error) {
@@ -266,9 +279,53 @@ html, body { font-family: 'Aptos', Calibri, Arial, sans-serif; }
                     setCurrentUser({ username, ...artist });
                     setLoginError('');
                     setLoginForm({ username: '', password: '', showPassword: false });
+                    
+                    // Check if sub-admin needs setup
+                    if (artist.type === 'subadmin' && artist.needsSetup) {
+                        setShowSetup(true);
+                    }
                 } else {
                     setLoginError('Invalid username or password');
                 }
+            };
+
+            // Sub-admin first-time setup
+            const handleSetup = async (e) => {
+                e.preventDefault();
+                setSetupError('');
+                
+                if (!setupForm.name.trim()) {
+                    setSetupError('Please enter your name');
+                    return;
+                }
+                if (setupForm.newPassword.length < 6) {
+                    setSetupError('Password must be at least 6 characters');
+                    return;
+                }
+                if (setupForm.newPassword !== setupForm.confirmPassword) {
+                    setSetupError('Passwords do not match');
+                    return;
+                }
+                
+                const updatedArtists = {
+                    ...artistsDb,
+                    [currentUser.username]: {
+                        ...artistsDb[currentUser.username],
+                        name: setupForm.name.trim(),
+                        password: setupForm.newPassword,
+                        needsSetup: false
+                    }
+                };
+                await saveArtists(updatedArtists);
+                setCurrentUser({ 
+                    ...currentUser, 
+                    name: setupForm.name.trim(), 
+                    password: setupForm.newPassword,
+                    needsSetup: false 
+                });
+                setShowSetup(false);
+                setSetupForm({ name: '', newPassword: '', confirmPassword: '' });
+                alert('Account setup complete! Welcome to the Inventory Portal.');
             };
 
             const handleLogout = () => {
@@ -277,6 +334,7 @@ html, body { font-family: 'Aptos', Calibri, Arial, sans-serif; }
                 setSelectedItems(new Set());
                 setSearchQuery('');
                 setActiveTab('inventory');
+                setShowSetup(false);
             };
 
             // Password change
@@ -459,11 +517,45 @@ html, body { font-family: 'Aptos', Calibri, Arial, sans-serif; }
 
             const handleResetPassword = async (username) => {
                 const newPassword = Math.random().toString(36).slice(-8);
+                const user = artistsDb[username];
                 await saveArtists({ 
                     ...artistsDb, 
-                    [username]: { ...artistsDb[username], password: newPassword } 
+                    [username]: { 
+                        ...user, 
+                        password: newPassword,
+                        // If resetting a sub-admin, also reset their setup flag
+                        needsSetup: user.type === 'subadmin' ? true : undefined
+                    } 
                 });
-                alert(`Password reset!\n\nNew password: ${newPassword}`);
+                alert(`Password reset!\n\nNew password: ${newPassword}${user.type === 'subadmin' ? '\n\nThey will need to complete setup again on next login.' : ''}`);
+            };
+
+            const handleDeleteSubAdmin = async (username) => {
+                if (!confirm(`Delete sub-admin account "${username}"?\n\nThis will deactivate the account.`)) {
+                    return;
+                }
+                await saveArtists({
+                    ...artistsDb,
+                    [username]: {
+                        ...artistsDb[username],
+                        active: false,
+                        name: '',
+                        needsSetup: true,
+                        password: 'temp123'
+                    }
+                });
+                alert('Sub-admin account deactivated. You can reactivate it from the Artists tab.');
+            };
+
+            const handleReactivateSubAdmin = async (username) => {
+                await saveArtists({
+                    ...artistsDb,
+                    [username]: {
+                        ...artistsDb[username],
+                        active: true
+                    }
+                });
+                alert(`Sub-admin account "${username}" reactivated!\n\nDefault password: temp123\n\nThey will need to complete setup on first login.`);
             };
 
             // Filter inventory by search
@@ -570,6 +662,69 @@ html, body { font-family: 'Aptos', Calibri, Arial, sans-serif; }
                             </form>
                             <div className="mt-6 pt-6 border-t border-gray-200 text-center text-sm text-gray-600">
                                 <p>Initial password: <code className="bg-gray-100 px-2 py-1 rounded">temp123</code></p>
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+
+            // Sub-admin first-time setup screen
+            if (showSetup) {
+                return (
+                    <div className="min-h-screen bg-gradient-to-br from-amber-50 to-orange-100 flex items-center justify-center p-4">
+                        <div className="bg-white rounded-lg shadow-xl p-8 w-full max-w-md">
+                            <div className="text-center mb-8">
+                                <h1 className="text-3xl font-bold text-gray-800 mb-2">Welcome!</h1>
+                                <p className="text-gray-600">Let's set up your administrator account</p>
+                            </div>
+                            <form onSubmit={handleSetup} className="space-y-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Your Full Name</label>
+                                    <input 
+                                        type="text" 
+                                        value={setupForm.name} 
+                                        onChange={(e) => setSetupForm({ ...setupForm, name: e.target.value })} 
+                                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500" 
+                                        placeholder="e.g., Jane Smith" 
+                                        required 
+                                    />
+                                    <p className="text-xs text-gray-500 mt-1">This will be your display name in the system</p>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Create Password</label>
+                                    <input 
+                                        type="password" 
+                                        value={setupForm.newPassword} 
+                                        onChange={(e) => setSetupForm({ ...setupForm, newPassword: e.target.value })} 
+                                        className="w-full px-4 py-2 border border-gray-300 rounded-lg" 
+                                        placeholder="Minimum 6 characters"
+                                        required 
+                                        minLength={6}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Confirm Password</label>
+                                    <input 
+                                        type="password" 
+                                        value={setupForm.confirmPassword} 
+                                        onChange={(e) => setSetupForm({ ...setupForm, confirmPassword: e.target.value })} 
+                                        className="w-full px-4 py-2 border border-gray-300 rounded-lg" 
+                                        required 
+                                    />
+                                </div>
+                                {setupError && (
+                                    <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
+                                        ⚠️ {setupError}
+                                    </div>
+                                )}
+                                <button type="submit" className="w-full bg-orange-600 hover:bg-orange-700 text-white font-semibold py-3 rounded-lg">
+                                    Complete Setup
+                                </button>
+                            </form>
+                            <div className="mt-4 text-center">
+                                <button onClick={handleLogout} className="text-gray-500 hover:text-gray-700 text-sm">
+                                    ← Back to Login
+                                </button>
                             </div>
                         </div>
                     </div>
@@ -706,7 +861,7 @@ html, body { font-family: 'Aptos', Calibri, Arial, sans-serif; }
                         <div className="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
                             <div>
                                 <h1 className="text-2xl font-bold text-gray-800">
-                                    {currentUser.type === 'admin' ? 'Admin Dashboard' : `Welcome, ${currentUser.name}!`}
+                                    {isAdmin(currentUser) ? `Admin Dashboard${isSubAdmin(currentUser) ? ` - ${currentUser.name}` : ''}` : `Welcome, ${currentUser.name}!`}
                                 </h1>
                                 <p className="text-sm text-gray-600">Corrales Bosque Gallery</p>
                             </div>
@@ -728,9 +883,9 @@ html, body { font-family: 'Aptos', Calibri, Arial, sans-serif; }
                                 onClick={() => setActiveTab('inventory')} 
                                 className={`px-6 py-3 font-medium ${activeTab === 'inventory' ? 'border-b-2 border-orange-600 text-orange-600' : 'text-gray-600'}`}
                             >
-                                📦 {currentUser.type === 'admin' ? 'All Inventory' : 'My Inventory'} ({inventory.length})
+                                📦 {isAdmin(currentUser) ? 'All Inventory' : 'My Inventory'} ({inventory.length})
                             </button>
-                            {currentUser.type === 'admin' && (
+                            {isAdmin(currentUser) && (
                                 <>
                                     <button 
                                         onClick={() => setActiveTab('archive')} 
@@ -829,7 +984,7 @@ html, body { font-family: 'Aptos', Calibri, Arial, sans-serif; }
                                                         <span className="text-green-600 text-xs">✓ Live</span>
                                                     </div>
                                                     <p className="text-sm text-gray-600 truncate">
-                                                        {currentUser.type === 'admin' && <span className="font-medium">{item.artistName} • </span>}
+                                                        {isAdmin(currentUser) && <span className="font-medium">{item.artistName} • </span>}
                                                         {item.type} • {item.medium} • {item.dimensions}
                                                     </p>
                                                     <p className="text-xs text-gray-400">SKU: {item.sku}</p>
@@ -850,7 +1005,7 @@ html, body { font-family: 'Aptos', Calibri, Arial, sans-serif; }
                             </div>
                         )}
 
-                        {activeTab === 'archive' && currentUser.type === 'admin' && (
+                        {activeTab === 'archive' && isAdmin(currentUser) && (
                             <div>
                                 {/* Archive Toolbar */}
                                 <div className="bg-white rounded-lg shadow p-4 mb-6">
@@ -903,7 +1058,7 @@ html, body { font-family: 'Aptos', Calibri, Arial, sans-serif; }
                             </div>
                         )}
 
-                        {activeTab === 'artists' && currentUser.type === 'admin' && (
+                        {activeTab === 'artists' && isAdmin(currentUser) && (
                             <div>
                                 <div className="flex justify-between items-center mb-6">
                                     <h2 className="text-2xl font-bold">Artist Management</h2>
@@ -916,6 +1071,71 @@ html, body { font-family: 'Aptos', Calibri, Arial, sans-serif; }
                                         </button>
                                     </div>
                                 </div>
+
+                                {/* Sub-Admins Section - Only visible to main admin */}
+                                {isMainAdmin(currentUser) && (
+                                    <div className="mb-8">
+                                        <h3 className="text-lg font-bold mb-4 text-gray-700">👤 Sub-Administrators</h3>
+                                        <div className="bg-white rounded-lg shadow overflow-hidden">
+                                            <table className="w-full">
+                                                <thead className="bg-blue-50">
+                                                    <tr>
+                                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
+                                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Username</th>
+                                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                                                        {showPasswords && <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Password</th>}
+                                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-gray-200">
+                                                    {Object.entries(artistsDb).filter(([u, a]) => a.type === 'subadmin').map(([username, admin]) => (
+                                                        <tr key={username} className="hover:bg-gray-50">
+                                                            <td className="px-6 py-4 font-medium">
+                                                                {admin.name || <span className="text-gray-400 italic">Not set up</span>}
+                                                            </td>
+                                                            <td className="px-6 py-4 text-gray-600">{username}</td>
+                                                            <td className="px-6 py-4">
+                                                                {admin.active ? (
+                                                                    admin.needsSetup ? (
+                                                                        <span className="px-2 py-1 bg-yellow-100 text-yellow-700 text-xs rounded-full">Pending Setup</span>
+                                                                    ) : (
+                                                                        <span className="px-2 py-1 bg-green-100 text-green-700 text-xs rounded-full">Active</span>
+                                                                    )
+                                                                ) : (
+                                                                    <span className="px-2 py-1 bg-gray-100 text-gray-500 text-xs rounded-full">Inactive</span>
+                                                                )}
+                                                            </td>
+                                                            {showPasswords && <td className="px-6 py-4 font-mono text-gray-600">{admin.password}</td>}
+                                                            <td className="px-6 py-4">
+                                                                <div className="flex gap-2">
+                                                                    {admin.active ? (
+                                                                        <>
+                                                                            {showPasswords && (
+                                                                                <button onClick={() => handleResetPassword(username)} className="px-3 py-1 bg-yellow-100 hover:bg-yellow-200 text-yellow-700 text-sm rounded">
+                                                                                    🔄 Reset PW
+                                                                                </button>
+                                                                            )}
+                                                                            <button onClick={() => handleDeleteSubAdmin(username)} className="px-3 py-1 bg-red-100 hover:bg-red-200 text-red-700 text-sm rounded">
+                                                                                🗑️ Deactivate
+                                                                            </button>
+                                                                        </>
+                                                                    ) : (
+                                                                        <button onClick={() => handleReactivateSubAdmin(username)} className="px-3 py-1 bg-green-100 hover:bg-green-200 text-green-700 text-sm rounded">
+                                                                            ✅ Reactivate
+                                                                        </button>
+                                                                    )}
+                                                                </div>
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Artists Section */}
+                                <h3 className="text-lg font-bold mb-4 text-gray-700">🎨 Artists</h3>
                                 <div className="bg-white rounded-lg shadow overflow-hidden">
                                     <table className="w-full">
                                         <thead className="bg-gray-50">
@@ -929,7 +1149,7 @@ html, body { font-family: 'Aptos', Calibri, Arial, sans-serif; }
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-gray-200">
-                                            {Object.entries(artistsDb).filter(([u]) => u !== 'admin').map(([username, artist]) => (
+                                            {Object.entries(artistsDb).filter(([u, a]) => !['admin', 'subadmin'].includes(a.type) && a.type !== 'subadmin').map(([username, artist]) => (
                                                 <tr key={username} className="hover:bg-gray-50">
                                                     <td className="px-6 py-4 font-medium">{artist.name}</td>
                                                     <td className="px-6 py-4 text-gray-600">{artist.type === 'coop' ? 'Co-op' : artist.type === 'consignment' ? 'Consignment' : 'Special'}</td>
