@@ -8,14 +8,13 @@
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- DYMO Connect Framework -->
-    <script src="https://cdn.jsdelivr.net/gh/dymosoftware/dymo-connect-framework@master/dymo.connect.framework.js"></script>
 </head>
 <body>
     <div id="root"></div>
     <script type="text/babel">
-        const { useState, useEffect } = React;
+        const { useState, useEffect, useMemo } = React;
 
+        // Artist database - stored in KV
         const INITIAL_ARTISTS = {
             'joan.findley-perls': { name: 'Joan Findley-Perls', type: 'coop', rate: 20, password: 'temp123', active: true },
             'lynne.patton': { name: 'Lynne Patton', type: 'coop', rate: 20, password: 'temp123', active: true },
@@ -42,7 +41,7 @@
 
         const ARTWORK_TYPES = ['Painting', 'Drawing', 'Print', 'Card', 'Ornaments', 'Photography', 'Ceramics', 'Glass', 'Jewelry', 'Mixed Media', 'Wood', 'Books'];
 
-        // KV Storage helper functions
+        // KV Storage helpers
         const kvGet = async (key) => {
             try {
                 const response = await fetch(`/api/kv?key=${key}`);
@@ -61,62 +60,191 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ key, value: JSON.stringify(value) })
                 });
-                const result = await response.json();
-                if (!result.success) {
-                    console.error('KV Save failed:', result);
-                    alert('Warning: Failed to save data. Your changes may not persist.');
-                }
-                return result.success;
+                return (await response.json()).success;
             } catch (error) {
                 console.error('KV Set Error:', error);
-                alert('Warning: Failed to save data. Your changes may not persist.');
                 return false;
             }
         };
 
+        // Square API helpers
+        const fetchSquareInventory = async (artistName = null) => {
+            try {
+                const url = artistName 
+                    ? `/api/square-inventory?artistName=${encodeURIComponent(artistName)}`
+                    : '/api/square-inventory';
+                const response = await fetch(url);
+                const data = await response.json();
+                if (data.success) {
+                    return data.items;
+                }
+                throw new Error(data.error || 'Failed to fetch inventory');
+            } catch (error) {
+                console.error('Fetch inventory error:', error);
+                return [];
+            }
+        };
+
+        const uploadToSquare = async (items) => {
+            try {
+                const response = await fetch('/api/square-upload', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(items)
+                });
+                return await response.json();
+            } catch (error) {
+                console.error('Upload error:', error);
+                return { success: false, error: error.message };
+            }
+        };
+
+        const deleteFromSquare = async (itemId) => {
+            try {
+                const response = await fetch('/api/square-delete', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ itemId })
+                });
+                return await response.json();
+            } catch (error) {
+                console.error('Delete error:', error);
+                return { success: false, error: error.message };
+            }
+        };
+
+        // Print label functions
+        const printSKULabels = (items) => {
+            const printWindow = window.open('', '_blank');
+            const labelsHTML = items.map((item, index) => {
+                const sku = item.sku || item.squareId || 'SKU-' + item.id;
+                return `<div class="label" ${index > 0 ? 'style="page-break-before: always;"' : ''}>
+                    <div class="category">${item.category || item.artistName + ' - ' + item.type}</div>
+                    <div class="price">$${parseFloat(item.price).toFixed(2)}</div>
+                    <svg class="barcode" data-sku="${sku}"></svg>
+                </div>`;
+            }).join('');
+            printWindow.document.write(`<!DOCTYPE html><html><head><title>SKU Labels</title>
+<script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"><\/script>
+<style>
+@page { size: 2.125in 1in; margin: 0.12in; }
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { font-family: Arial, sans-serif; }
+.label { text-align: center; }
+.category { font-size: 11pt; font-weight: bold; margin-bottom: 2px; }
+.price { font-size: 14pt; font-weight: bold; margin-bottom: 4px; }
+.barcode { display: block; margin: 0 auto; }
+</style></head><body>${labelsHTML}
+<script>
+window.onload = function() {
+    document.querySelectorAll('.barcode').forEach(function(el) {
+        try { JsBarcode(el, el.dataset.sku, { format: "CODE128", width: 2, height: 35, displayValue: true, fontSize: 12, margin: 0 }); } catch(e) {}
+    });
+    setTimeout(function() { window.print(); }, 300);
+};
+<\/script></body></html>`);
+            printWindow.document.close();
+        };
+
+        const printWallLabels = (items) => {
+            const printWindow = window.open('', '_blank');
+            const labelsHTML = items.map((item, index) => {
+                return `<div class="label" ${index > 0 ? 'style="page-break-before: always;"' : ''}>
+                    <div class="artist">${item.artistName}</div>
+                    <div class="title">"${item.title}"</div>
+                    <div class="medium">${item.medium}</div>
+                    <div class="price">$${parseFloat(item.price).toFixed(2)}</div>
+                </div>`;
+            }).join('');
+            printWindow.document.write(`<!DOCTYPE html><html><head><title>Wall Labels</title><style>
+@page { size: 3.5in 2in; margin: 0.375in 0.15in 0.2in 0.28in; }
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { font-family: 'Aptos', Calibri, Arial, sans-serif; }
+.label { text-align: center; }
+.artist { font-size: 16pt; font-weight: bold; margin-bottom: 4px; }
+.title { font-size: 17pt; font-style: italic; margin-bottom: 4px; line-height: 1.1; }
+.medium { font-size: 14pt; color: #333; margin-bottom: 4px; }
+.price { font-size: 16pt; font-weight: bold; }
+</style></head><body>${labelsHTML}<script>window.onload=function(){window.print();}<\/script></body></html>`);
+            printWindow.document.close();
+        };
+
+        // Main App Component
         function InventoryPortal() {
+            // Auth state
             const [currentUser, setCurrentUser] = useState(null);
             const [loginForm, setLoginForm] = useState({ username: '', password: '', showPassword: false });
             const [loginError, setLoginError] = useState('');
-            const [isNewArtwork, setIsNewArtwork] = useState(true);
-            const [formData, setFormData] = useState({ title: '', type: '', medium: '', description: '', height: '', width: '', price: '', quantity: '1', discounts: '' });
-            const [submissions, setSubmissions] = useState([]);
-            const [duplicateWarning, setDuplicateWarning] = useState(null);
-            const [adminView, setAdminView] = useState('pending');
             const [artistsDb, setArtistsDb] = useState(INITIAL_ARTISTS);
+            
+            // UI state
+            const [loading, setLoading] = useState(true);
+            const [activeTab, setActiveTab] = useState('inventory');
+            const [searchQuery, setSearchQuery] = useState('');
+            
+            // Inventory state
+            const [inventory, setInventory] = useState([]);
+            const [loadingInventory, setLoadingInventory] = useState(false);
+            const [selectedItems, setSelectedItems] = useState(new Set());
+            
+            // Archive state
+            const [archive, setArchive] = useState([]);
+            const [archiveSearch, setArchiveSearch] = useState('');
+            
+            // Form state
+            const [showAddForm, setShowAddForm] = useState(false);
+            const [editingItem, setEditingItem] = useState(null);
+            const [formData, setFormData] = useState({ 
+                title: '', type: '', medium: '', description: '', 
+                height: '', width: '', price: '', quantity: '1' 
+            });
+            const [processing, setProcessing] = useState(false);
+            
+            // Admin state
             const [showAddArtist, setShowAddArtist] = useState(false);
             const [newArtist, setNewArtist] = useState({ firstName: '', lastName: '', type: 'coop', customRate: '' });
-            const [processing, setProcessing] = useState(false);
+            const [showPasswords, setShowPasswords] = useState(false);
+            
+            // Password change state
             const [showPasswordChange, setShowPasswordChange] = useState(false);
             const [passwordForm, setPasswordForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
             const [passwordError, setPasswordError] = useState('');
-            const [showPasswords, setShowPasswords] = useState(false);
-            const [loading, setLoading] = useState(true);
-            const [editingSubmission, setEditingSubmission] = useState(null);
-            const [editForm, setEditForm] = useState({ title: '', type: '', medium: '', description: '', height: '', width: '', price: '', quantity: '1', discounts: '' });
-            const [showEditArtist, setShowEditArtist] = useState(null);
-            const [editArtistForm, setEditArtistForm] = useState({ name: '', type: '', rate: '' });
-            const [selectedForUpload, setSelectedForUpload] = useState(new Set());
-            const [selectedForPrint, setSelectedForPrint] = useState(new Set());
 
-            // Load data from KV on startup
+            // Load artists and archive from KV on startup
             useEffect(() => {
                 const loadData = async () => {
-                    setLoading(true);
-                    const [savedSubmissions, savedArtists] = await Promise.all([
-                        kvGet('cbg-submissions'),
-                        kvGet('cbg-artists')
+                    const [savedArtists, savedArchive] = await Promise.all([
+                        kvGet('cbg-artists'),
+                        kvGet('cbg-archive')
                     ]);
-                    if (Array.isArray(savedSubmissions)) setSubmissions(savedSubmissions);
-                    if (savedArtists && typeof savedArtists === 'object') setArtistsDb(savedArtists);
+                    if (savedArtists && typeof savedArtists === 'object') {
+                        setArtistsDb(savedArtists);
+                    }
+                    if (Array.isArray(savedArchive)) {
+                        setArchive(savedArchive);
+                    }
                     setLoading(false);
                 };
                 loadData();
             }, []);
 
-            const saveSubmissions = async (newSubmissions) => {
-                setSubmissions(newSubmissions);
-                await kvSet('cbg-submissions', newSubmissions);
+            // Load inventory when user logs in
+            useEffect(() => {
+                if (currentUser) {
+                    loadInventory();
+                }
+            }, [currentUser]);
+
+            const loadInventory = async () => {
+                setLoadingInventory(true);
+                try {
+                    const artistName = currentUser.type === 'admin' ? null : currentUser.name;
+                    const items = await fetchSquareInventory(artistName);
+                    setInventory(items);
+                } catch (error) {
+                    console.error('Failed to load inventory:', error);
+                }
+                setLoadingInventory(false);
             };
 
             const saveArtists = async (newArtists) => {
@@ -124,6 +252,12 @@
                 await kvSet('cbg-artists', newArtists);
             };
 
+            const saveArchive = async (newArchive) => {
+                setArchive(newArchive);
+                await kvSet('cbg-archive', newArchive);
+            };
+
+            // Auth handlers
             const handleLogin = (e) => {
                 e.preventDefault();
                 const username = loginForm.username.toLowerCase().trim();
@@ -139,13 +273,13 @@
 
             const handleLogout = () => {
                 setCurrentUser(null);
-                setFormData({ title: '', type: '', medium: '', description: '', height: '', width: '', price: '', quantity: '1', discounts: '' });
-                setIsNewArtwork(true);
-                setShowPasswordChange(false);
-                setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
-                setPasswordError('');
+                setInventory([]);
+                setSelectedItems(new Set());
+                setSearchQuery('');
+                setActiveTab('inventory');
             };
 
+            // Password change
             const handlePasswordChange = async (e) => {
                 e.preventDefault();
                 setPasswordError('');
@@ -163,10 +297,7 @@
                 }
                 const updatedArtists = {
                     ...artistsDb,
-                    [currentUser.username]: {
-                        ...artistsDb[currentUser.username],
-                        password: passwordForm.newPassword
-                    }
+                    [currentUser.username]: { ...artistsDb[currentUser.username], password: passwordForm.newPassword }
                 };
                 await saveArtists(updatedArtists);
                 setCurrentUser({ ...currentUser, password: passwordForm.newPassword });
@@ -175,641 +306,208 @@
                 alert('Password changed successfully!');
             };
 
-            const handleResetPassword = async (username) => {
-                const newPassword = Math.random().toString(36).slice(-8);
-                const updatedArtists = {
-                    ...artistsDb,
-                    [username]: { ...artistsDb[username], password: newPassword }
-                };
-                await saveArtists(updatedArtists);
-                alert(`Password reset for ${artistsDb[username].name}!\n\nNew password: ${newPassword}\n\nPlease share this with the artist.`);
-            };
-
-            // DYMO SDK Integration
-            const [dymoAvailable, setDymoAvailable] = useState(false);
-            const [dymoPrinters, setDymoPrinters] = useState([]);
-            const [selectedPrinter, setSelectedPrinter] = useState('');
-            const [dymoError, setDymoError] = useState('');
-
-            // Check for DYMO Connect on load
-            useEffect(() => {
-                const checkDymo = async () => {
-                    console.log('Checking DYMO...', typeof dymo);
-                    
-                    // Check if dymo object exists
-                    if (typeof dymo === 'undefined') {
-                        setDymoError('DYMO framework not loaded');
-                        console.log('DYMO framework not loaded from CDN');
-                        return;
-                    }
-                    
-                    if (!dymo.label || !dymo.label.framework) {
-                        setDymoError('DYMO label framework not found');
-                        console.log('DYMO label framework not found');
-                        return;
-                    }
-                    
-                    try {
-                        console.log('Initializing DYMO...');
-                        await dymo.label.framework.init();
-                        
-                        console.log('Checking environment...');
-                        const env = await dymo.label.framework.checkEnvironment();
-                        console.log('DYMO environment:', env);
-                        
-                        if (env.isFrameworkInstalled && env.isWebServicePresent) {
-                            setDymoAvailable(true);
-                            const printers = await dymo.label.framework.getPrinters();
-                            console.log('DYMO printers:', printers);
-                            const labelPrinters = printers.filter(p => p.printerType === 'LabelWriterPrinter');
-                            setDymoPrinters(labelPrinters);
-                            if (labelPrinters.length > 0) {
-                                setSelectedPrinter(labelPrinters[0].name);
-                            }
-                        } else {
-                            setDymoError(`Framework: ${env.isFrameworkInstalled}, WebService: ${env.isWebServicePresent}`);
-                        }
-                    } catch (e) {
-                        console.log('DYMO error:', e);
-                        setDymoError(e.message || 'Unknown error');
-                    }
-                };
-                // Delay check to allow script to load
-                setTimeout(checkDymo, 2000);
-            }, []);
-
-            // DYMO Label XML templates - units in twips (1440 twips = 1 inch)
-            // Wall Card: 3.5" x 2" = 5040 x 2880 twips
-            const createWallLabelXml = (item) => {
-                return `<?xml version="1.0" encoding="utf-8"?>
-<DieCutLabel Version="8.0" Units="twips">
-    <PaperOrientation>Landscape</PaperOrientation>
-    <Id>30256</Id>
-    <PaperName>30256 Shipping</PaperName>
-    <DrawCommands>
-        <RoundRectangle X="0" Y="0" Width="2880" Height="5040" Rx="0" Ry="0"/>
-    </DrawCommands>
-    <ObjectInfo>
-        <TextObject>
-            <Name>Artist</Name>
-            <ForeColor Alpha="255" Red="0" Green="0" Blue="0"/>
-            <BackColor Alpha="0" Red="255" Green="255" Blue="255"/>
-            <LinkedObjectName></LinkedObjectName>
-            <Rotation>Rotation0</Rotation>
-            <IsMirrored>False</IsMirrored>
-            <IsVariable>False</IsVariable>
-            <HorizontalAlignment>Center</HorizontalAlignment>
-            <VerticalAlignment>Top</VerticalAlignment>
-            <TextFitMode>ShrinkToFit</TextFitMode>
-            <UseFullFontHeight>True</UseFullFontHeight>
-            <Verticalized>False</Verticalized>
-            <StyledText>
-                <Element>
-                    <String>${item.artistName}</String>
-                    <Attributes>
-                        <Font Family="Arial" Size="14" Bold="True" Italic="False" Underline="False" Strikeout="False"/>
-                    </Attributes>
-                </Element>
-            </StyledText>
-        </TextObject>
-        <Bounds X="200" Y="200" Width="4640" Height="500"/>
-    </ObjectInfo>
-    <ObjectInfo>
-        <TextObject>
-            <Name>Title</Name>
-            <ForeColor Alpha="255" Red="0" Green="0" Blue="0"/>
-            <BackColor Alpha="0" Red="255" Green="255" Blue="255"/>
-            <LinkedObjectName></LinkedObjectName>
-            <Rotation>Rotation0</Rotation>
-            <IsMirrored>False</IsMirrored>
-            <IsVariable>False</IsVariable>
-            <HorizontalAlignment>Center</HorizontalAlignment>
-            <VerticalAlignment>Middle</VerticalAlignment>
-            <TextFitMode>ShrinkToFit</TextFitMode>
-            <UseFullFontHeight>True</UseFullFontHeight>
-            <Verticalized>False</Verticalized>
-            <StyledText>
-                <Element>
-                    <String>"${item.title}"</String>
-                    <Attributes>
-                        <Font Family="Arial" Size="14" Bold="False" Italic="True" Underline="False" Strikeout="False"/>
-                    </Attributes>
-                </Element>
-            </StyledText>
-        </TextObject>
-        <Bounds X="200" Y="700" Width="4640" Height="600"/>
-    </ObjectInfo>
-    <ObjectInfo>
-        <TextObject>
-            <Name>Medium</Name>
-            <ForeColor Alpha="255" Red="80" Green="80" Blue="80"/>
-            <BackColor Alpha="0" Red="255" Green="255" Blue="255"/>
-            <LinkedObjectName></LinkedObjectName>
-            <Rotation>Rotation0</Rotation>
-            <IsMirrored>False</IsMirrored>
-            <IsVariable>False</IsVariable>
-            <HorizontalAlignment>Center</HorizontalAlignment>
-            <VerticalAlignment>Middle</VerticalAlignment>
-            <TextFitMode>ShrinkToFit</TextFitMode>
-            <UseFullFontHeight>True</UseFullFontHeight>
-            <Verticalized>False</Verticalized>
-            <StyledText>
-                <Element>
-                    <String>${item.medium}</String>
-                    <Attributes>
-                        <Font Family="Arial" Size="12" Bold="False" Italic="False" Underline="False" Strikeout="False"/>
-                    </Attributes>
-                </Element>
-            </StyledText>
-        </TextObject>
-        <Bounds X="200" Y="1300" Width="4640" Height="400"/>
-    </ObjectInfo>
-    <ObjectInfo>
-        <TextObject>
-            <Name>Price</Name>
-            <ForeColor Alpha="255" Red="0" Green="0" Blue="0"/>
-            <BackColor Alpha="0" Red="255" Green="255" Blue="255"/>
-            <LinkedObjectName></LinkedObjectName>
-            <Rotation>Rotation0</Rotation>
-            <IsMirrored>False</IsMirrored>
-            <IsVariable>False</IsVariable>
-            <HorizontalAlignment>Center</HorizontalAlignment>
-            <VerticalAlignment>Middle</VerticalAlignment>
-            <TextFitMode>ShrinkToFit</TextFitMode>
-            <UseFullFontHeight>True</UseFullFontHeight>
-            <Verticalized>False</Verticalized>
-            <StyledText>
-                <Element>
-                    <String>$${parseFloat(item.price).toFixed(2)}</String>
-                    <Attributes>
-                        <Font Family="Arial" Size="14" Bold="True" Italic="False" Underline="False" Strikeout="False"/>
-                    </Attributes>
-                </Element>
-            </StyledText>
-        </TextObject>
-        <Bounds X="200" Y="1700" Width="4640" Height="500"/>
-    </ObjectInfo>
-</DieCutLabel>`;
-            };
-
-            // SKU Label: 2.125" x 1" = 3060 x 1440 twips
-            const createSKULabelXml = (item) => {
-                const sku = item.sku || item.squareId || 'SKU-' + item.id;
-                return `<?xml version="1.0" encoding="utf-8"?>
-<DieCutLabel Version="8.0" Units="twips">
-    <PaperOrientation>Landscape</PaperOrientation>
-    <Id>30336</Id>
-    <PaperName>30336 Small Multipurpose</PaperName>
-    <DrawCommands>
-        <RoundRectangle X="0" Y="0" Width="1440" Height="3060" Rx="0" Ry="0"/>
-    </DrawCommands>
-    <ObjectInfo>
-        <TextObject>
-            <Name>Category</Name>
-            <ForeColor Alpha="255" Red="0" Green="0" Blue="0"/>
-            <BackColor Alpha="0" Red="255" Green="255" Blue="255"/>
-            <LinkedObjectName></LinkedObjectName>
-            <Rotation>Rotation0</Rotation>
-            <IsMirrored>False</IsMirrored>
-            <IsVariable>False</IsVariable>
-            <HorizontalAlignment>Center</HorizontalAlignment>
-            <VerticalAlignment>Top</VerticalAlignment>
-            <TextFitMode>ShrinkToFit</TextFitMode>
-            <UseFullFontHeight>True</UseFullFontHeight>
-            <Verticalized>False</Verticalized>
-            <StyledText>
-                <Element>
-                    <String>${item.category}</String>
-                    <Attributes>
-                        <Font Family="Arial" Size="6" Bold="True" Italic="False" Underline="False" Strikeout="False"/>
-                    </Attributes>
-                </Element>
-            </StyledText>
-        </TextObject>
-        <Bounds X="100" Y="50" Width="2860" Height="180"/>
-    </ObjectInfo>
-    <ObjectInfo>
-        <TextObject>
-            <Name>Title</Name>
-            <ForeColor Alpha="255" Red="0" Green="0" Blue="0"/>
-            <BackColor Alpha="0" Red="255" Green="255" Blue="255"/>
-            <LinkedObjectName></LinkedObjectName>
-            <Rotation>Rotation0</Rotation>
-            <IsMirrored>False</IsMirrored>
-            <IsVariable>False</IsVariable>
-            <HorizontalAlignment>Center</HorizontalAlignment>
-            <VerticalAlignment>Middle</VerticalAlignment>
-            <TextFitMode>ShrinkToFit</TextFitMode>
-            <UseFullFontHeight>True</UseFullFontHeight>
-            <Verticalized>False</Verticalized>
-            <StyledText>
-                <Element>
-                    <String>${item.title}</String>
-                    <Attributes>
-                        <Font Family="Arial" Size="7" Bold="False" Italic="False" Underline="False" Strikeout="False"/>
-                    </Attributes>
-                </Element>
-            </StyledText>
-        </TextObject>
-        <Bounds X="100" Y="230" Width="2860" Height="200"/>
-    </ObjectInfo>
-    <ObjectInfo>
-        <TextObject>
-            <Name>Price</Name>
-            <ForeColor Alpha="255" Red="0" Green="0" Blue="0"/>
-            <BackColor Alpha="0" Red="255" Green="255" Blue="255"/>
-            <LinkedObjectName></LinkedObjectName>
-            <Rotation>Rotation0</Rotation>
-            <IsMirrored>False</IsMirrored>
-            <IsVariable>False</IsVariable>
-            <HorizontalAlignment>Center</HorizontalAlignment>
-            <VerticalAlignment>Middle</VerticalAlignment>
-            <TextFitMode>ShrinkToFit</TextFitMode>
-            <UseFullFontHeight>True</UseFullFontHeight>
-            <Verticalized>False</Verticalized>
-            <StyledText>
-                <Element>
-                    <String>$${parseFloat(item.price).toFixed(2)}</String>
-                    <Attributes>
-                        <Font Family="Arial" Size="8" Bold="True" Italic="False" Underline="False" Strikeout="False"/>
-                    </Attributes>
-                </Element>
-            </StyledText>
-        </TextObject>
-        <Bounds X="100" Y="430" Width="2860" Height="200"/>
-    </ObjectInfo>
-    <ObjectInfo>
-        <BarcodeObject>
-            <Name>Barcode</Name>
-            <ForeColor Alpha="255" Red="0" Green="0" Blue="0"/>
-            <BackColor Alpha="0" Red="255" Green="255" Blue="255"/>
-            <LinkedObjectName></LinkedObjectName>
-            <Rotation>Rotation0</Rotation>
-            <IsMirrored>False</IsMirrored>
-            <IsVariable>False</IsVariable>
-            <Text>${sku}</Text>
-            <Type>Code128Auto</Type>
-            <Size>Small</Size>
-            <TextPosition>Bottom</TextPosition>
-            <TextFont Family="Arial" Size="5" Bold="False" Italic="False" Underline="False" Strikeout="False"/>
-            <CheckSumFont Family="Arial" Size="5" Bold="False" Italic="False" Underline="False" Strikeout="False"/>
-            <TextEmbedding>None</TextEmbedding>
-            <ECLevel>0</ECLevel>
-            <HorizontalAlignment>Center</HorizontalAlignment>
-            <QuietZonesPadding Left="0" Top="0" Right="0" Bottom="0"/>
-        </BarcodeObject>
-        <Bounds X="100" Y="650" Width="2860" Height="700"/>
-    </ObjectInfo>
-</DieCutLabel>`;
-            };
-
-            // Print using DYMO SDK
-            const printWithDymo = async (items, labelType) => {
-                if (!dymoAvailable || !selectedPrinter) {
-                    alert('DYMO printer not available. Using browser print instead.');
-                    if (labelType === 'wall') {
-                        printWallLabels(items);
-                    } else {
-                        printSKULabels(items);
-                    }
-                    return;
-                }
-
-                try {
-                    for (const item of items) {
-                        const labelXml = labelType === 'wall' ? createWallLabelXml(item) : createSKULabelXml(item);
-                        const label = dymo.label.framework.openLabelXml(labelXml);
-                        await dymo.label.framework.printLabel(selectedPrinter, '', label);
-                    }
-                    alert(`Printed ${items.length} ${labelType} label(s) to ${selectedPrinter}`);
-                } catch (e) {
-                    console.error('DYMO print error:', e);
-                    alert('DYMO print failed: ' + e.message + '\nFalling back to browser print.');
-                    if (labelType === 'wall') {
-                        printWallLabels(items);
-                    } else {
-                        printSKULabels(items);
-                    }
-                }
-            };
-
-            const printSKULabels = (items) => {
-                const printWindow = window.open('', '_blank');
-                const labelsHTML = items.map((item, index) => {
-                    const sku = item.sku || item.squareId || 'SKU-' + item.id;
-                    return `<div class="label" ${index > 0 ? 'style="page-break-before: always;"' : ''}>
-                        <div class="category">${item.category}</div>
-                        <div class="price">$${parseFloat(item.price).toFixed(2)}</div>
-                        <svg class="barcode" data-sku="${sku}"></svg>
-                    </div>`;
-                }).join('');
-                printWindow.document.write(`<!DOCTYPE html><html><head><title>SKU Labels</title>
-<script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"><\/script>
-<style>
-@page { size: 2.125in 1in; margin: 0.12in; }
-* { margin: 0; padding: 0; box-sizing: border-box; }
-html, body { font-family: Arial, sans-serif; }
-.label { 
-    text-align: center;
-}
-.category { font-size: 11pt; font-weight: bold; margin-bottom: 2px; }
-.price { font-size: 14pt; font-weight: bold; margin-bottom: 4px; }
-.barcode { display: block; margin: 0 auto; }
-</style></head><body>${labelsHTML}
-<script>
-window.onload = function() {
-    document.querySelectorAll('.barcode').forEach(function(el) {
-        try {
-            JsBarcode(el, el.dataset.sku, { format: "CODE128", width: 2, height: 35, displayValue: true, fontSize: 12, margin: 0 });
-        } catch(e) { console.log('Barcode error:', e); }
-    });
-    setTimeout(function() { window.print(); }, 300);
-};
-<\/script></body></html>`);
-                printWindow.document.close();
-            };
-
-            const printWallLabels = (items) => {
-                const printWindow = window.open('', '_blank');
-                const labelsHTML = items.map((item, index) => {
-                    return `<div class="label" ${index > 0 ? 'style="page-break-before: always;"' : ''}>
-                        <div class="artist">${item.artistName}</div>
-                        <div class="title">"${item.title}"</div>
-                        <div class="medium">${item.medium}</div>
-                        <div class="price">$${parseFloat(item.price).toFixed(2)}</div>
-                    </div>`;
-                }).join('');
-                printWindow.document.write(`<!DOCTYPE html><html><head><title>Wall Labels</title><style>
-@page { size: 3.5in 2in; margin: 0.375in 0.15in 0.2in 0.28in; }
-@media print { @page { margin: 0.375in 0.15in 0.2in 0.28in; } }
-* { margin: 0; padding: 0; box-sizing: border-box; }
-html, body { font-family: 'Aptos', Calibri, Arial, sans-serif; margin: 0; padding: 0; }
-.label { 
-    text-align: center;
-}
-.artist { font-size: 16pt; font-weight: bold; margin-bottom: 4px; }
-.title { font-size: 17pt; font-style: italic; margin-bottom: 4px; line-height: 1.1; }
-.medium { font-size: 14pt; color: #333; margin-bottom: 4px; }
-.price { font-size: 16pt; font-weight: bold; }
-</style></head><body>${labelsHTML}<script>window.onload=function(){window.print();}<\/script></body></html>`);
-                printWindow.document.close();
-            };
-            useEffect(() => {                
-            if (formData.title && currentUser && isNewArtwork) {
-                    const userSubmissions = submissions.filter(s => s.artistName === currentUser.name);
-                    const similar = userSubmissions.find(s => s.title.toLowerCase().includes(formData.title.toLowerCase()) || formData.title.toLowerCase().includes(s.title.toLowerCase()));
-                    if (similar && formData.title.length > 3) setDuplicateWarning(similar);
-                    else setDuplicateWarning(null);
-                }
-            }, [formData.title, currentUser, isNewArtwork, submissions]);
-
-            const handleSubmit = async (e) => {
+            // Inventory handlers
+            const handleAddNew = async (e) => {
                 e.preventDefault();
-                const newSubmission = {
+                setProcessing(true);
+                
+                const newItem = {
                     id: Date.now(),
                     artistName: currentUser.name,
-                    artistUsername: currentUser.username,
-                    artistType: currentUser.type,
-                    commissionRate: currentUser.rate,
                     ...formData,
-                    dimensions: `${formData.height}" x ${formData.width}"`,
-                    category: `${currentUser.name} - ${formData.type}`,
-                    status: 'pending',
-                    submittedAt: new Date().toISOString(),
-                    isVariation: !isNewArtwork
+                    dimensions: `${formData.height}" x ${formData.width}"`
                 };
-                await saveSubmissions([...submissions, newSubmission]);
-                setFormData({ title: '', type: '', medium: '', description: '', height: '', width: '', price: '', quantity: '1', discounts: '' });
-                setIsNewArtwork(true);
-                setDuplicateWarning(null);
-                alert('Artwork submitted successfully! Pending admin approval.');
+                
+                const result = await uploadToSquare([newItem]);
+                
+                if (result.success) {
+                    alert('✅ Item added to Square successfully!');
+                    setFormData({ title: '', type: '', medium: '', description: '', height: '', width: '', price: '', quantity: '1' });
+                    setShowAddForm(false);
+                    loadInventory();
+                } else {
+                    alert('❌ Failed to add item: ' + (result.error || 'Unknown error'));
+                }
+                setProcessing(false);
             };
 
-            const handleApprove = async (id) => await saveSubmissions(submissions.map(s => s.id === id ? { ...s, status: 'approved' } : s));
-            const handleReject = async (id, reason) => await saveSubmissions(submissions.map(s => s.id === id ? { ...s, status: 'rejected', rejectionReason: reason } : s));
-
-            const handleProcess = async (itemsToProcess = null) => {
-                const toProcess = itemsToProcess || submissions.filter(s => s.status === 'approved');
-                if (toProcess.length === 0) { alert('No approved items to process'); return; }
-                if (!confirm(`Upload ${toProcess.length} items to Square?`)) return;
+            const handleEditItem = async (e) => {
+                e.preventDefault();
                 setProcessing(true);
-                try {
-                    const response = await fetch('/api/square-upload', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(toProcess) });
-                    const result = await response.json();
-                    if (result.success) {
-                        const updated = submissions.map(s => {
-                            const match = result.results.find(r => r.originalId === s.id);
-                            return match ? { ...s, status: 'processed', processedAt: new Date().toISOString(), squareId: match.squareId, sku: match.sku } : s;
-                        });
-                        await saveSubmissions(updated);
-                        setSelectedForUpload(new Set());
-                        alert(`✅ Success! ${toProcess.length} items uploaded.\n\nGo to "Print Labels" tab to print.`);
-                    } else throw new Error(result.error || 'Upload failed');
-                } catch (error) {
-                    alert(`❌ Upload failed: ${error.message}`);
-                } finally { setProcessing(false); }
+                
+                const updatedItem = {
+                    ...editingItem,
+                    ...formData,
+                    dimensions: `${formData.height}" x ${formData.width}"`
+                };
+                
+                const result = await uploadToSquare([updatedItem]);
+                
+                if (result.success) {
+                    alert('✅ Item updated in Square!');
+                    setEditingItem(null);
+                    setFormData({ title: '', type: '', medium: '', description: '', height: '', width: '', price: '', quantity: '1' });
+                    loadInventory();
+                } else {
+                    alert('❌ Failed to update: ' + (result.error || 'Unknown error'));
+                }
+                setProcessing(false);
             };
 
+            const startEdit = (item) => {
+                setFormData({
+                    title: item.title || '',
+                    type: item.type || '',
+                    medium: item.medium || '',
+                    description: item.description || '',
+                    height: item.height || '',
+                    width: item.width || '',
+                    price: item.price || '',
+                    quantity: '1'
+                });
+                setEditingItem(item);
+            };
+
+            // Archive handler
+            const handleArchive = async (item) => {
+                if (!confirm(`Archive "${item.title}"?\n\nThis will remove it from Square and save it to the archive.`)) {
+                    return;
+                }
+                
+                setProcessing(true);
+                
+                // Delete from Square
+                const deleteResult = await deleteFromSquare(item.squareId);
+                
+                if (deleteResult.success) {
+                    // Save to archive
+                    const archivedItem = {
+                        ...item,
+                        archivedAt: new Date().toISOString(),
+                        archivedBy: currentUser.name
+                    };
+                    const newArchive = [...archive, archivedItem];
+                    await saveArchive(newArchive);
+                    
+                    alert('✅ Item archived successfully!');
+                    loadInventory();
+                } else {
+                    alert('❌ Failed to archive: ' + (deleteResult.error || 'Unknown error'));
+                }
+                
+                setProcessing(false);
+            };
+
+            // Restore from archive (admin only)
+            const handleRestore = async (item) => {
+                if (!confirm(`Restore "${item.title}" to Square?`)) {
+                    return;
+                }
+                
+                setProcessing(true);
+                
+                // Remove archive-specific fields and re-upload
+                const { archivedAt, archivedBy, squareId, variationId, ...itemData } = item;
+                const restoreItem = {
+                    ...itemData,
+                    id: Date.now()
+                };
+                
+                const result = await uploadToSquare([restoreItem]);
+                
+                if (result.success) {
+                    // Remove from archive
+                    const newArchive = archive.filter(a => a.squareId !== item.squareId);
+                    await saveArchive(newArchive);
+                    
+                    alert('✅ Item restored to Square!');
+                    loadInventory();
+                } else {
+                    alert('❌ Failed to restore: ' + (result.error || 'Unknown error'));
+                }
+                
+                setProcessing(false);
+            };
+
+            // Print handlers
+            const handlePrintSelected = (type) => {
+                const items = inventory.filter(i => selectedItems.has(i.squareId || i.id));
+                if (items.length === 0) {
+                    alert('Please select items to print');
+                    return;
+                }
+                if (type === 'sku') {
+                    printSKULabels(items);
+                } else {
+                    printWallLabels(items);
+                }
+            };
+
+            // Artist management (admin)
             const handleAddArtist = async () => {
                 const username = `${newArtist.firstName.toLowerCase()}.${newArtist.lastName.toLowerCase()}`.replace(/\s/g, '-');
                 const rate = newArtist.type === 'coop' ? 20 : newArtist.type === 'consignment' ? 50 : parseInt(newArtist.customRate);
                 const password = Math.random().toString(36).slice(-8);
-                await saveArtists({ ...artistsDb, [username]: { name: `${newArtist.firstName} ${newArtist.lastName}`, type: newArtist.type, rate, password, active: true } });
+                await saveArtists({ 
+                    ...artistsDb, 
+                    [username]: { name: `${newArtist.firstName} ${newArtist.lastName}`, type: newArtist.type, rate, password, active: true } 
+                });
                 alert(`Artist added!\n\nUsername: ${username}\nPassword: ${password}`);
                 setShowAddArtist(false);
                 setNewArtist({ firstName: '', lastName: '', type: 'coop', customRate: '' });
             };
 
-            // Edit submission functions
-            const startEditSubmission = (sub) => {
-                const [height, width] = sub.dimensions ? sub.dimensions.replace(/"/g, '').split(' x ').map(d => d.trim()) : ['', ''];
-                setEditForm({
-                    title: sub.title || '',
-                    type: sub.type || '',
-                    medium: sub.medium || '',
-                    description: sub.description || '',
-                    height: height || '',
-                    width: width || '',
-                    price: sub.price || '',
-                    quantity: sub.quantity || '1',
-                    discounts: sub.discounts || ''
+            const handleResetPassword = async (username) => {
+                const newPassword = Math.random().toString(36).slice(-8);
+                await saveArtists({ 
+                    ...artistsDb, 
+                    [username]: { ...artistsDb[username], password: newPassword } 
                 });
-                setEditingSubmission(sub);
+                alert(`Password reset!\n\nNew password: ${newPassword}`);
             };
 
-            const handleEditSubmission = async (e) => {
-                e.preventDefault();
-                const updatedSubmission = {
-                    ...editingSubmission,
-                    ...editForm,
-                    dimensions: `${editForm.height}" x ${editForm.width}"`,
-                    category: `${editingSubmission.artistName} - ${editForm.type}`,
-                    lastModified: new Date().toISOString(),
-                    // If it was rejected or processed, set back to pending for review
-                    status: editingSubmission.status === 'processed' ? 'pending-update' : editingSubmission.status === 'rejected' ? 'pending' : editingSubmission.status
-                };
-                const updatedSubmissions = submissions.map(s => s.id === editingSubmission.id ? updatedSubmission : s);
-                await saveSubmissions(updatedSubmissions);
-                setEditingSubmission(null);
-                setEditForm({ title: '', type: '', medium: '', description: '', height: '', width: '', price: '', quantity: '1', discounts: '' });
-                if (editingSubmission.status === 'processed') {
-                    alert('Changes saved! Since this item is already live in Square, your changes are pending admin review to sync.');
+            // Filter inventory by search
+            const filteredInventory = useMemo(() => {
+                if (!searchQuery.trim()) return inventory;
+                const q = searchQuery.toLowerCase();
+                return inventory.filter(item => 
+                    item.title?.toLowerCase().includes(q) ||
+                    item.artistName?.toLowerCase().includes(q) ||
+                    item.type?.toLowerCase().includes(q) ||
+                    item.medium?.toLowerCase().includes(q) ||
+                    item.sku?.toLowerCase().includes(q)
+                );
+            }, [inventory, searchQuery]);
+
+            // Filter archive by search
+            const filteredArchive = useMemo(() => {
+                if (!archiveSearch.trim()) return archive;
+                const q = archiveSearch.toLowerCase();
+                return archive.filter(item => 
+                    item.title?.toLowerCase().includes(q) ||
+                    item.artistName?.toLowerCase().includes(q) ||
+                    item.type?.toLowerCase().includes(q) ||
+                    item.sku?.toLowerCase().includes(q)
+                );
+            }, [archive, archiveSearch]);
+
+            // Toggle selection
+            const toggleSelect = (id) => {
+                const newSet = new Set(selectedItems);
+                if (newSet.has(id)) newSet.delete(id);
+                else newSet.add(id);
+                setSelectedItems(newSet);
+            };
+
+            const selectAll = () => {
+                if (selectedItems.size === filteredInventory.length) {
+                    setSelectedItems(new Set());
                 } else {
-                    alert('Changes saved successfully!');
+                    setSelectedItems(new Set(filteredInventory.map(i => i.squareId || i.id)));
                 }
             };
 
-            // Edit artist functions (admin)
-            const startEditArtist = (username, artist) => {
-                setEditArtistForm({
-                    name: artist.name,
-                    type: artist.type,
-                    rate: artist.rate.toString()
-                });
-                setShowEditArtist(username);
-            };
-
-            const handleEditArtist = async (e) => {
-                e.preventDefault();
-                const updatedArtists = {
-                    ...artistsDb,
-                    [showEditArtist]: {
-                        ...artistsDb[showEditArtist],
-                        name: editArtistForm.name,
-                        type: editArtistForm.type,
-                        rate: parseInt(editArtistForm.rate)
-                    }
-                };
-                await saveArtists(updatedArtists);
-                setShowEditArtist(null);
-                alert('Artist information updated!');
-            };
-
-            const [showPasswordFields, setShowPasswordFields] = useState(false);
-            
-            const passwordModal = showPasswordChange ? (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                    <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md mx-4">
-                        <h3 className="text-xl font-bold mb-4">Change Password</h3>
-                        <form onSubmit={handlePasswordChange} className="space-y-4">
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Current Password</label>
-                                <div className="relative">
-                                    <input type={showPasswordFields ? 'text' : 'password'} value={passwordForm.currentPassword} onChange={(e) => setPasswordForm({ ...passwordForm, currentPassword: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg pr-10" required />
-                                </div>
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">New Password</label>
-                                <div className="relative">
-                                    <input type={showPasswordFields ? 'text' : 'password'} value={passwordForm.newPassword} onChange={(e) => setPasswordForm({ ...passwordForm, newPassword: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg pr-10" required minLength={6} />
-                                </div>
-                                <p className="text-xs text-gray-500 mt-1">Minimum 6 characters</p>
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Confirm New Password</label>
-                                <div className="relative">
-                                    <input type={showPasswordFields ? 'text' : 'password'} value={passwordForm.confirmPassword} onChange={(e) => setPasswordForm({ ...passwordForm, confirmPassword: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg pr-10" required />
-                                </div>
-                            </div>
-                            <div className="flex items-center">
-                                <button type="button" onClick={() => setShowPasswordFields(!showPasswordFields)} className="flex items-center space-x-2 text-sm text-gray-600 hover:text-gray-800">
-                                    {showPasswordFields ? '🔒' : '👁️'} <span>{showPasswordFields ? 'Hide passwords' : 'Show passwords'}</span>
-                                </button>
-                            </div>
-                            {passwordError && <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">⚠️ {passwordError}</div>}
-                            <div className="flex space-x-3 pt-2">
-                                <button type="submit" className="flex-1 bg-orange-600 hover:bg-orange-700 text-white font-semibold py-2 rounded-lg">Update Password</button>
-                                <button type="button" onClick={() => { setShowPasswordChange(false); setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' }); setPasswordError(''); setShowPasswordFields(false); }} className="flex-1 bg-gray-200 hover:bg-gray-300 font-semibold py-2 rounded-lg">Cancel</button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-            ) : null;
-
-            // Edit submission modal
-            const editModal = editingSubmission ? (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-                        <h3 className="text-xl font-bold mb-4">Edit Artwork: {editingSubmission.title}</h3>
-                        {editingSubmission.status === 'processed' && (
-                            <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-800">
-                                ⚠️ This item is already live in Square. Changes will need admin approval to sync.
-                            </div>
-                        )}
-                        <form onSubmit={handleEditSubmission} className="space-y-4">
-                            <div>
-                                <label className="block text-sm font-medium mb-1">Artwork Title *</label>
-                                <input type="text" value={editForm.title} onChange={(e) => setEditForm({ ...editForm, title: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg" required />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium mb-1">Type *</label>
-                                <select value={editForm.type} onChange={(e) => setEditForm({ ...editForm, type: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
-                                    <option value="">Select...</option>
-                                    {ARTWORK_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                                </select>
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium mb-1">Medium *</label>
-                                <input type="text" value={editForm.medium} onChange={(e) => setEditForm({ ...editForm, medium: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg" required />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium mb-1">Description</label>
-                                <textarea value={editForm.description} onChange={(e) => setEditForm({ ...editForm, description: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg" rows="3" />
-                            </div>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div><label className="block text-sm font-medium mb-1">Height (inches) *</label><input type="number" step="0.1" value={editForm.height} onChange={(e) => setEditForm({ ...editForm, height: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg" required /></div>
-                                <div><label className="block text-sm font-medium mb-1">Width (inches) *</label><input type="number" step="0.1" value={editForm.width} onChange={(e) => setEditForm({ ...editForm, width: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg" required /></div>
-                            </div>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div><label className="block text-sm font-medium mb-1">Price ($) *</label><input type="number" step="0.01" value={editForm.price} onChange={(e) => setEditForm({ ...editForm, price: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg" required /></div>
-                                <div><label className="block text-sm font-medium mb-1">Quantity *</label><input type="number" min="1" value={editForm.quantity} onChange={(e) => setEditForm({ ...editForm, quantity: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg" required /></div>
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium mb-1">Discounts</label>
-                                <input type="text" value={editForm.discounts} onChange={(e) => setEditForm({ ...editForm, discounts: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg" />
-                            </div>
-                            <div className="flex space-x-3 pt-4">
-                                <button type="submit" className="flex-1 bg-orange-600 hover:bg-orange-700 text-white font-semibold py-2 rounded-lg">💾 Save Changes</button>
-                                <button type="button" onClick={() => { setEditingSubmission(null); setEditForm({ title: '', type: '', medium: '', description: '', height: '', width: '', price: '', quantity: '1', discounts: '' }); }} className="flex-1 bg-gray-200 hover:bg-gray-300 font-semibold py-2 rounded-lg">Cancel</button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-            ) : null;
-
-            // Edit artist modal (admin)
-            const editArtistModal = showEditArtist ? (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md">
-                        <h3 className="text-xl font-bold mb-4">Edit Artist: {artistsDb[showEditArtist]?.name}</h3>
-                        <form onSubmit={handleEditArtist} className="space-y-4">
-                            <div>
-                                <label className="block text-sm font-medium mb-1">Name</label>
-                                <input type="text" value={editArtistForm.name} onChange={(e) => setEditArtistForm({ ...editArtistForm, name: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg" required />
-                                <p className="text-xs text-gray-500 mt-1">Fix spelling errors here</p>
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium mb-1">Type</label>
-                                <select value={editArtistForm.type} onChange={(e) => setEditArtistForm({ ...editArtistForm, type: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
-                                    <option value="coop">Co-op Member</option>
-                                    <option value="consignment">Consignment</option>
-                                    <option value="special">Special</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium mb-1">Commission Rate (%)</label>
-                                <input type="number" min="0" max="100" value={editArtistForm.rate} onChange={(e) => setEditArtistForm({ ...editArtistForm, rate: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg" required />
-                                <p className="text-xs text-gray-500 mt-1">Co-op: 20%, Consignment: 50%</p>
-                            </div>
-                            <div className="flex space-x-3 pt-4">
-                                <button type="submit" className="flex-1 bg-orange-600 hover:bg-orange-700 text-white font-semibold py-2 rounded-lg">💾 Save Changes</button>
-                                <button type="button" onClick={() => setShowEditArtist(null)} className="flex-1 bg-gray-200 hover:bg-gray-300 font-semibold py-2 rounded-lg">Cancel</button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-            ) : null;
-
+            // Loading screen
             if (loading) {
                 return (
                     <div className="min-h-screen bg-gradient-to-br from-amber-50 to-orange-100 flex items-center justify-center">
@@ -821,6 +519,7 @@ html, body { font-family: 'Aptos', Calibri, Arial, sans-serif; margin: 0; paddin
                 );
             }
 
+            // Login screen
             if (!currentUser) {
                 return (
                     <div className="min-h-screen bg-gradient-to-br from-amber-50 to-orange-100 flex items-center justify-center p-4">
@@ -832,495 +531,422 @@ html, body { font-family: 'Aptos', Calibri, Arial, sans-serif; margin: 0; paddin
                             <form onSubmit={handleLogin} className="space-y-4">
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-1">Username</label>
-                                    <input type="text" value={loginForm.username} onChange={(e) => setLoginForm({ ...loginForm, username: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="firstname.lastname" required />
+                                    <input 
+                                        type="text" 
+                                        value={loginForm.username} 
+                                        onChange={(e) => setLoginForm({ ...loginForm, username: e.target.value })} 
+                                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500" 
+                                        placeholder="firstname.lastname" 
+                                        required 
+                                    />
                                 </div>
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
                                     <div className="relative">
-                                        <input type={loginForm.showPassword ? 'text' : 'password'} value={loginForm.password} onChange={(e) => setLoginForm({ ...loginForm, password: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg pr-10" required />
-                                        <button type="button" onClick={() => setLoginForm({ ...loginForm, showPassword: !loginForm.showPassword })} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500">{loginForm.showPassword ? '🔒' : '👁️'}</button>
+                                        <input 
+                                            type={loginForm.showPassword ? 'text' : 'password'} 
+                                            value={loginForm.password} 
+                                            onChange={(e) => setLoginForm({ ...loginForm, password: e.target.value })} 
+                                            className="w-full px-4 py-2 border border-gray-300 rounded-lg pr-10" 
+                                            required 
+                                        />
+                                        <button 
+                                            type="button" 
+                                            onClick={() => setLoginForm({ ...loginForm, showPassword: !loginForm.showPassword })} 
+                                            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500"
+                                        >
+                                            {loginForm.showPassword ? '🔒' : '👁️'}
+                                        </button>
                                     </div>
                                 </div>
-                                {loginError && <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">⚠️ {loginError}</div>}
-                                <button type="submit" className="w-full bg-orange-600 hover:bg-orange-700 text-white font-semibold py-3 rounded-lg">Log In</button>
+                                {loginError && (
+                                    <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
+                                        ⚠️ {loginError}
+                                    </div>
+                                )}
+                                <button type="submit" className="w-full bg-orange-600 hover:bg-orange-700 text-white font-semibold py-3 rounded-lg">
+                                    Log In
+                                </button>
                             </form>
                             <div className="mt-6 pt-6 border-t border-gray-200 text-center text-sm text-gray-600">
-                                <p>Initial password for artists: <code className="bg-gray-100 px-2 py-1 rounded">temp123</code></p>
-                                <p className="mt-1">Admin password: <code className="bg-gray-100 px-2 py-1 rounded">admin123</code></p>
+                                <p>Initial password: <code className="bg-gray-100 px-2 py-1 rounded">temp123</code></p>
                             </div>
                         </div>
                     </div>
                 );
             }
 
-            if (currentUser.type === 'admin') {
-                const pendingSubmissions = submissions.filter(s => s.status === 'pending');
-                const approvedSubmissions = submissions.filter(s => s.status === 'approved');
-                const processedSubmissions = submissions.filter(s => s.status === 'processed');
-                return (
-                    <div className="min-h-screen bg-gray-50">
-                        {passwordModal}
-                        {editArtistModal}
-                        <div className="bg-white shadow-sm border-b">
-                            <div className="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
-                                <div><h1 className="text-2xl font-bold text-gray-800">Admin Dashboard</h1><p className="text-sm text-gray-600">Corrales Bosque Gallery</p></div>
-                                <div className="flex items-center space-x-3">
-                                    <button onClick={() => setShowPasswordChange(true)} className="flex items-center space-x-2 px-4 py-2 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-lg">🔑 <span>Change Password</span></button>
-                                    <button onClick={handleLogout} className="flex items-center space-x-2 px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg">🚪 <span>Logout</span></button>
-                                </div>
+            // Password change modal
+            const passwordModal = showPasswordChange && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md">
+                        <h3 className="text-xl font-bold mb-4">Change Password</h3>
+                        <form onSubmit={handlePasswordChange} className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium mb-1">Current Password</label>
+                                <input type="password" value={passwordForm.currentPassword} onChange={(e) => setPasswordForm({...passwordForm, currentPassword: e.target.value})} className="w-full px-4 py-2 border rounded-lg" required />
                             </div>
-                        </div>
-                        <div className="bg-white border-b">
-                            <div className="max-w-7xl mx-auto px-4 flex space-x-1">
-                                <button onClick={() => setAdminView('pending')} className={`px-6 py-3 font-medium ${adminView === 'pending' ? 'border-b-2 border-orange-600 text-orange-600' : 'text-gray-600'}`}>📥 Pending ({pendingSubmissions.length})</button>
-                                <button onClick={() => setAdminView('approved')} className={`px-6 py-3 font-medium ${adminView === 'approved' ? 'border-b-2 border-orange-600 text-orange-600' : 'text-gray-600'}`}>✅ Ready ({approvedSubmissions.length})</button>
-                                <button onClick={() => setAdminView('print')} className={`px-6 py-3 font-medium ${adminView === 'print' ? 'border-b-2 border-orange-600 text-orange-600' : 'text-gray-600'}`}>🏷️ Print Labels ({processedSubmissions.length})</button>
-                                <button onClick={() => setAdminView('artists')} className={`px-6 py-3 font-medium ${adminView === 'artists' ? 'border-b-2 border-orange-600 text-orange-600' : 'text-gray-600'}`}>👥 Artists</button>
+                            <div>
+                                <label className="block text-sm font-medium mb-1">New Password</label>
+                                <input type="password" value={passwordForm.newPassword} onChange={(e) => setPasswordForm({...passwordForm, newPassword: e.target.value})} className="w-full px-4 py-2 border rounded-lg" required minLength={6} />
                             </div>
-                        </div>
-                        <div className="max-w-7xl mx-auto px-4 py-6">
-                            {adminView === 'pending' && (
-                                <div className="space-y-4">
-                                    {pendingSubmissions.length === 0 ? <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500">No pending submissions</div> : pendingSubmissions.map(sub => (
-                                        <div key={sub.id} className="bg-white rounded-lg shadow p-6">
-                                            <div className="flex justify-between mb-4">
-                                                <div><h3 className="text-xl font-bold">{sub.title}</h3><p className="text-sm text-gray-600">by {sub.artistName}</p></div>
-                                                {sub.isVariation && <span className="bg-purple-100 text-purple-800 text-xs px-3 py-1 rounded-full">🔗 Variation</span>}
-                                            </div>
-                                            <div className="grid grid-cols-2 gap-4 mb-4 text-sm">
-                                                <div><span className="font-medium">Type:</span> {sub.type}</div>
-                                                <div><span className="font-medium">Medium:</span> {sub.medium}</div>
-                                                <div><span className="font-medium">Size:</span> {sub.dimensions}</div>
-                                                <div><span className="font-medium">Price:</span> ${sub.price}</div>
-                                            </div>
-                                            {sub.description && <p className="text-sm text-gray-600 mb-4 italic">{sub.description}</p>}
-                                            <div className="flex space-x-3">
-                                                <button onClick={() => handleApprove(sub.id)} className="flex items-center space-x-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg">✅ <span>Approve</span></button>
-                                                <button onClick={() => { const r = prompt('Reason:'); if (r) handleReject(sub.id, r); }} className="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg">⏸️ Reject</button>
-                                                <button onClick={() => { if (confirm('Mark as complete? Item will be removed from all queues.')) { const updated = submissions.filter(s => s.id !== sub.id); saveSubmissions(updated); }}} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg">✔️ Complete</button>
-                                                <button onClick={() => { if (confirm('Delete this item from app?')) { const updated = submissions.filter(s => s.id !== sub.id); saveSubmissions(updated); }}} className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg">🗑️ Delete</button>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-                            {adminView === 'approved' && (
-                                <div>
-                                    {approvedSubmissions.length > 0 && (
-                                        <div className="bg-gradient-to-r from-green-50 to-blue-50 border-2 border-green-300 rounded-lg p-6 mb-6">
-                                            <h3 className="text-lg font-bold mb-4">{selectedForUpload.size > 0 ? `${selectedForUpload.size} of ${approvedSubmissions.length}` : approvedSubmissions.length} items ready to upload</h3>
-                                            <div className="flex flex-wrap gap-3">
-                                                <button 
-                                                    onClick={() => {
-                                                        const itemsToUpload = selectedForUpload.size > 0 
-                                                            ? approvedSubmissions.filter(s => selectedForUpload.has(s.id))
-                                                            : approvedSubmissions;
-                                                        handleProcess(itemsToUpload);
-                                                    }} 
-                                                    disabled={processing} 
-                                                    className="flex items-center space-x-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg disabled:bg-gray-400"
-                                                >
-                                                    {processing ? '⟳' : '⬆️'} <span>{processing ? 'Uploading...' : selectedForUpload.size > 0 ? `Upload ${selectedForUpload.size} Selected` : 'Upload All to Square'}</span>
-                                                </button>
-                                                {selectedForUpload.size > 0 && (
-                                                    <>
-                                                        <button 
-                                                            onClick={() => {
-                                                                if (confirm(`Mark ${selectedForUpload.size} item(s) as complete? They will be removed from all queues.`)) {
-                                                                    const updatedSubmissions = submissions.filter(s => !selectedForUpload.has(s.id));
-                                                                    saveSubmissions(updatedSubmissions);
-                                                                    setSelectedForUpload(new Set());
-                                                                }
-                                                            }}
-                                                            className="flex items-center space-x-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg"
-                                                        >
-                                                            ✔️ <span>Mark Complete</span>
-                                                        </button>
-                                                        <button 
-                                                            onClick={() => {
-                                                                if (confirm(`Delete ${selectedForUpload.size} item(s) from app? This removes them completely from the app.`)) {
-                                                                    const updatedSubmissions = submissions.filter(s => !selectedForUpload.has(s.id));
-                                                                    saveSubmissions(updatedSubmissions);
-                                                                    setSelectedForUpload(new Set());
-                                                                }
-                                                            }}
-                                                            className="flex items-center space-x-2 px-6 py-3 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-lg"
-                                                        >
-                                                            🗑️ <span>Delete from App</span>
-                                                        </button>
-                                                    </>
-                                                )}
-                                            </div>
-                                        </div>
-                                    )}
-                                    <div className="space-y-4">
-                                        {approvedSubmissions.length === 0 ? <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500">No items ready for upload</div> : (
-                                            <>
-                                                <div className="bg-white rounded-lg shadow p-3 flex items-center gap-3">
-                                                    <input 
-                                                        type="checkbox" 
-                                                        checked={selectedForUpload.size === approvedSubmissions.length && approvedSubmissions.length > 0}
-                                                        onChange={(e) => {
-                                                            if (e.target.checked) {
-                                                                setSelectedForUpload(new Set(approvedSubmissions.map(s => s.id)));
-                                                            } else {
-                                                                setSelectedForUpload(new Set());
-                                                            }
-                                                        }}
-                                                        className="w-5 h-5"
-                                                    />
-                                                    <span className="font-medium">Select All</span>
-                                                </div>
-                                                {approvedSubmissions.map(sub => (
-                                                    <div key={sub.id} className="bg-white rounded-lg shadow p-4 flex items-center gap-4">
-                                                        <input 
-                                                            type="checkbox" 
-                                                            checked={selectedForUpload.has(sub.id)}
-                                                            onChange={(e) => {
-                                                                const newSet = new Set(selectedForUpload);
-                                                                if (e.target.checked) {
-                                                                    newSet.add(sub.id);
-                                                                } else {
-                                                                    newSet.delete(sub.id);
-                                                                }
-                                                                setSelectedForUpload(newSet);
-                                                            }}
-                                                            className="w-5 h-5"
-                                                        />
-                                                        <div className="flex-1">
-                                                            <h3 className="text-lg font-bold">{sub.title}</h3>
-                                                            <p className="text-sm text-gray-600">by {sub.artistName} • {sub.category} • ${sub.price}</p>
-                                                        </div>
-                                                    </div>
-                                                ))}
-                                            </>
-                                        )}
-                                    </div>
-                                </div>
-                            )}
-                            {adminView === 'print' && (
-                                <div>
-                                    {processedSubmissions.length > 0 && (
-                                        <div className="bg-gradient-to-r from-purple-50 to-pink-50 border-2 border-purple-300 rounded-lg p-6 mb-6">
-                                            <h3 className="text-lg font-bold mb-4">🖨️ Print Labels for {selectedForPrint.size > 0 ? `${selectedForPrint.size} of ${processedSubmissions.length}` : processedSubmissions.length} items</h3>
-                                            
-                                            {dymoAvailable ? (
-                                                <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg">
-                                                    <p className="text-green-800 font-medium">✅ DYMO Connect detected!</p>
-                                                    <div className="flex items-center gap-3 mt-2">
-                                                        <label className="text-sm text-green-700">Printer:</label>
-                                                        <select 
-                                                            value={selectedPrinter} 
-                                                            onChange={(e) => setSelectedPrinter(e.target.value)}
-                                                            className="px-3 py-1 border border-green-300 rounded text-sm"
-                                                        >
-                                                            {dymoPrinters.map(p => (
-                                                                <option key={p.name} value={p.name}>{p.name}</option>
-                                                            ))}
-                                                        </select>
-                                                    </div>
-                                                </div>
-                                            ) : (
-                                                <div className="mb-4">
-                                                    <p className="text-sm text-gray-600 mb-2">
-                                                        💡 Install <a href="https://download.dymo.com/dymo/Software/Win/DCDSetup1.4.5.1.exe" className="text-blue-600 underline" target="_blank">DYMO Connect</a> for better label printing, or use browser print below.
-                                                    </p>
-                                                    {dymoError && <p className="text-xs text-red-500">DYMO status: {dymoError}</p>}
-                                                </div>
-                                            )}
-                                            
-                                            <div className="flex flex-wrap gap-3">
-                                                {(() => {
-                                                    const itemsToPrint = selectedForPrint.size > 0 
-                                                        ? processedSubmissions.filter(s => selectedForPrint.has(s.id))
-                                                        : processedSubmissions;
-                                                    return dymoAvailable ? (
-                                                        <>
-                                                            <button onClick={() => printWithDymo(itemsToPrint, 'sku')} className="flex items-center space-x-2 px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white font-semibold rounded-lg">🏷️ <span>{selectedForPrint.size > 0 ? `Print ${selectedForPrint.size} SKU (DYMO)` : 'Print All SKU (DYMO)'}</span></button>
-                                                            <button onClick={() => printWithDymo(itemsToPrint, 'wall')} className="flex items-center space-x-2 px-6 py-3 bg-pink-600 hover:bg-pink-700 text-white font-semibold rounded-lg">🖼️ <span>{selectedForPrint.size > 0 ? `Print ${selectedForPrint.size} Wall (DYMO)` : 'Print All Wall (DYMO)'}</span></button>
-                                                        </>
-                                                    ) : (
-                                                        <>
-                                                            <button onClick={() => printSKULabels(itemsToPrint)} className="flex items-center space-x-2 px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white font-semibold rounded-lg">🏷️ <span>{selectedForPrint.size > 0 ? `Print ${selectedForPrint.size} SKU` : 'Print All SKU'}</span></button>
-                                                            <button onClick={() => printWallLabels(itemsToPrint)} className="flex items-center space-x-2 px-6 py-3 bg-pink-600 hover:bg-pink-700 text-white font-semibold rounded-lg">🖼️ <span>{selectedForPrint.size > 0 ? `Print ${selectedForPrint.size} Wall` : 'Print All Wall'}</span></button>
-                                                        </>
-                                                    );
-                                                })()}
-                                                {selectedForPrint.size > 0 && (
-                                                    <>
-                                                        <button 
-                                                            onClick={() => {
-                                                                if (confirm(`Mark ${selectedForPrint.size} item(s) as complete? They will be removed from all queues but remain in Square.`)) {
-                                                                    const updatedSubmissions = submissions.filter(s => !selectedForPrint.has(s.id));
-                                                                    saveSubmissions(updatedSubmissions);
-                                                                    setSelectedForPrint(new Set());
-                                                                }
-                                                            }}
-                                                            className="flex items-center space-x-2 px-6 py-3 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-lg"
-                                                        >
-                                                            ✅ <span>Mark Complete</span>
-                                                        </button>
-                                                        <button 
-                                                            onClick={() => {
-                                                                if (confirm(`Delete ${selectedForPrint.size} item(s) from app? This only removes them from the app queues, NOT from Square.`)) {
-                                                                    const updatedSubmissions = submissions.filter(s => !selectedForPrint.has(s.id));
-                                                                    saveSubmissions(updatedSubmissions);
-                                                                    setSelectedForPrint(new Set());
-                                                                }
-                                                            }}
-                                                            className="flex items-center space-x-2 px-6 py-3 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-lg"
-                                                        >
-                                                            🗑️ <span>Delete from App</span>
-                                                        </button>
-                                                    </>
-                                                )}
-                                            </div>
-                                            
-                                            {dymoAvailable && (
-                                                <details className="mt-4">
-                                                    <summary className="text-xs text-gray-500 cursor-pointer">Browser print (fallback)</summary>
-                                                    <div className="flex flex-wrap gap-2 mt-2">
-                                                        <button onClick={() => printSKULabels(selectedForPrint.size > 0 ? processedSubmissions.filter(s => selectedForPrint.has(s.id)) : processedSubmissions)} className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 text-sm rounded">🏷️ Browser SKU</button>
-                                                        <button onClick={() => printWallLabels(selectedForPrint.size > 0 ? processedSubmissions.filter(s => selectedForPrint.has(s.id)) : processedSubmissions)} className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 text-sm rounded">🖼️ Browser Wall</button>
-                                                    </div>
-                                                </details>
-                                            )}
-                                            
-                                            <p className="text-xs text-gray-500 mt-4"><strong>Tip:</strong> SKU → 1"×2⅛" labels | Wall → 2"×3.5" labels</p>
-                                        </div>
-                                    )}
-                                    <div className="space-y-4">
-                                        {processedSubmissions.length === 0 ? <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500">No processed items. Upload approved items first.</div> : (
-                                            <>
-                                                <div className="bg-white rounded-lg shadow p-3 flex items-center gap-3">
-                                                    <input 
-                                                        type="checkbox" 
-                                                        checked={selectedForPrint.size === processedSubmissions.length && processedSubmissions.length > 0}
-                                                        onChange={(e) => {
-                                                            if (e.target.checked) {
-                                                                setSelectedForPrint(new Set(processedSubmissions.map(s => s.id)));
-                                                            } else {
-                                                                setSelectedForPrint(new Set());
-                                                            }
-                                                        }}
-                                                        className="w-5 h-5"
-                                                    />
-                                                    <span className="font-medium">Select All</span>
-                                                </div>
-                                                {processedSubmissions.map(sub => (
-                                                    <div key={sub.id} className="bg-white rounded-lg shadow p-4 flex items-center gap-4">
-                                                        <input 
-                                                            type="checkbox" 
-                                                            checked={selectedForPrint.has(sub.id)}
-                                                            onChange={(e) => {
-                                                                const newSet = new Set(selectedForPrint);
-                                                                if (e.target.checked) {
-                                                                    newSet.add(sub.id);
-                                                                } else {
-                                                                    newSet.delete(sub.id);
-                                                                }
-                                                                setSelectedForPrint(newSet);
-                                                            }}
-                                                            className="w-5 h-5"
-                                                        />
-                                                        <div className="flex-1">
-                                                            <h3 className="font-bold">{sub.title}</h3>
-                                                            <p className="text-sm text-gray-600">by {sub.artistName} • ${sub.price}</p>
-                                                            <p className="text-xs text-gray-400">SKU: {sub.sku || sub.squareId || 'SKU-' + sub.id}</p>
-                                                        </div>
-                                                        <div className="flex space-x-2">
-                                                            {dymoAvailable ? (
-                                                                <>
-                                                                    <button onClick={() => printWithDymo([sub], 'sku')} className="px-3 py-1 bg-purple-100 hover:bg-purple-200 text-purple-700 text-sm rounded">🏷️ SKU</button>
-                                                                    <button onClick={() => printWithDymo([sub], 'wall')} className="px-3 py-1 bg-pink-100 hover:bg-pink-200 text-pink-700 text-sm rounded">🖼️ Wall</button>
-                                                                </>
-                                                            ) : (
-                                                                <>
-                                                                    <button onClick={() => printSKULabels([sub])} className="px-3 py-1 bg-purple-100 hover:bg-purple-200 text-purple-700 text-sm rounded">🏷️ SKU</button>
-                                                                    <button onClick={() => printWallLabels([sub])} className="px-3 py-1 bg-pink-100 hover:bg-pink-200 text-pink-700 text-sm rounded">🖼️ Wall</button>
-                                                                </>
-                                                            )}
-                                                        </div>
-                                                    </div>
-                                                ))}
-                                            </>
-                                        )}
-                                    </div>
-                                </div>
-                            )}
-                            {adminView === 'artists' && (
-                                <div>
-                                    <div className="flex justify-between items-center mb-6">
-                                        <h2 className="text-2xl font-bold">Artist Management</h2>
-                                        <div className="flex space-x-3">
-                                            <button onClick={() => setShowPasswords(!showPasswords)} className={`flex items-center space-x-2 px-4 py-2 rounded-lg ${showPasswords ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-600'}`}>{showPasswords ? '🔒 Hide' : '👁️ Show'} Passwords</button>
-                                            <button onClick={() => setShowAddArtist(true)} className="flex items-center space-x-2 px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg">➕ <span>Add Artist</span></button>
-                                        </div>
-                                    </div>
-                                    {showAddArtist && (
-                                        <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
-                                            <h3 className="text-xl font-bold mb-4">Add New Artist</h3>
-                                            <div className="grid grid-cols-2 gap-4 mb-4">
-                                                <div><label className="block text-sm font-medium mb-1">First Name</label><input type="text" value={newArtist.firstName} onChange={(e) => setNewArtist({ ...newArtist, firstName: e.target.value })} className="w-full px-3 py-2 border rounded-lg" /></div>
-                                                <div><label className="block text-sm font-medium mb-1">Last Name</label><input type="text" value={newArtist.lastName} onChange={(e) => setNewArtist({ ...newArtist, lastName: e.target.value })} className="w-full px-3 py-2 border rounded-lg" /></div>
-                                            </div>
-                                            <div className="mb-4">
-                                                <label className="block text-sm font-medium mb-2">Type</label>
-                                                <div className="space-y-2">
-                                                    <label className="flex items-center"><input type="radio" checked={newArtist.type === 'coop'} onChange={() => setNewArtist({ ...newArtist, type: 'coop' })} className="mr-2" />Co-op (20%)</label>
-                                                    <label className="flex items-center"><input type="radio" checked={newArtist.type === 'consignment'} onChange={() => setNewArtist({ ...newArtist, type: 'consignment' })} className="mr-2" />Consignment (50%)</label>
-                                                    <label className="flex items-center"><input type="radio" checked={newArtist.type === 'special'} onChange={() => setNewArtist({ ...newArtist, type: 'special' })} className="mr-2" />Special (custom)</label>
-                                                </div>
-                                            </div>
-                                            {newArtist.type === 'special' && <div className="mb-4"><label className="block text-sm font-medium mb-1">Rate (%)</label><input type="number" value={newArtist.customRate} onChange={(e) => setNewArtist({ ...newArtist, customRate: e.target.value })} className="w-full px-3 py-2 border rounded-lg" /></div>}
-                                            <div className="flex space-x-3">
-                                                <button onClick={handleAddArtist} disabled={!newArtist.firstName || !newArtist.lastName} className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg disabled:bg-gray-300">Create</button>
-                                                <button onClick={() => { setShowAddArtist(false); setNewArtist({ firstName: '', lastName: '', type: 'coop', customRate: '' }); }} className="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg">Cancel</button>
-                                            </div>
-                                        </div>
-                                    )}
-                                    <div className="bg-white rounded-lg shadow overflow-hidden">
-                                        <table className="w-full">
-                                            <thead className="bg-gray-50">
-                                                <tr>
-                                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
-                                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
-                                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Rate</th>
-                                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Username</th>
-                                                    {showPasswords && <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Password</th>}
-                                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody className="divide-y divide-gray-200">
-                                                {Object.entries(artistsDb).filter(([u]) => u !== 'admin').map(([username, artist]) => (
-                                                    <tr key={username} className="hover:bg-gray-50">
-                                                        <td className="px-6 py-4 text-sm font-medium">{artist.name}</td>
-                                                        <td className="px-6 py-4 text-sm text-gray-600">{artist.type === 'coop' ? 'Co-op' : artist.type === 'consignment' ? 'Consignment' : 'Special'}</td>
-                                                        <td className="px-6 py-4 text-sm text-gray-600">{artist.rate}%</td>
-                                                        <td className="px-6 py-4 text-sm text-gray-600">{username}</td>
-                                                        {showPasswords && <td className="px-6 py-4 text-sm font-mono text-gray-600">{artist.password}</td>}
-                                                        <td className="px-6 py-4 flex space-x-2">
-                                                            <button onClick={() => startEditArtist(username, artist)} className="text-sm px-3 py-1 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded">✏️ Edit</button>
-                                                            {showPasswords && <button onClick={() => handleResetPassword(username)} className="text-sm px-3 py-1 bg-yellow-100 hover:bg-yellow-200 text-yellow-700 rounded">🔄 Reset PW</button>}
-                                                        </td>
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                </div>
-                            )}
-                        </div>
+                            <div>
+                                <label className="block text-sm font-medium mb-1">Confirm Password</label>
+                                <input type="password" value={passwordForm.confirmPassword} onChange={(e) => setPasswordForm({...passwordForm, confirmPassword: e.target.value})} className="w-full px-4 py-2 border rounded-lg" required />
+                            </div>
+                            {passwordError && <div className="text-red-600 text-sm">⚠️ {passwordError}</div>}
+                            <div className="flex gap-3">
+                                <button type="submit" className="flex-1 bg-orange-600 hover:bg-orange-700 text-white py-2 rounded-lg">Update</button>
+                                <button type="button" onClick={() => {setShowPasswordChange(false); setPasswordError('');}} className="flex-1 bg-gray-200 hover:bg-gray-300 py-2 rounded-lg">Cancel</button>
+                            </div>
+                        </form>
                     </div>
-                );
-            } 
-        const userSubmissions = submissions.filter(s => s.artistUsername === currentUser.username);
-            const myPending = userSubmissions.filter(s => s.status === 'pending');
-            const myProcessed = userSubmissions.filter(s => s.status === 'processed');
+                </div>
+            );
 
-            return (
-                <div className="min-h-screen bg-gradient-to-br from-amber-50 to-orange-100">
-                    {passwordModal}
-                    {editModal}
-                    <div className="bg-white shadow-sm">
-                        <div className="max-w-4xl mx-auto px-4 py-4 flex justify-between items-center">
-                            <div><h1 className="text-2xl font-bold text-gray-800">Welcome, {currentUser.name}!</h1><p className="text-sm text-gray-600">Corrales Bosque Gallery Inventory Portal</p></div>
-                            <div className="flex items-center space-x-3">
-                                <button onClick={() => setShowPasswordChange(true)} className="flex items-center space-x-2 px-4 py-2 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-lg">🔑 <span>Change Password</span></button>
-                                <button onClick={handleLogout} className="flex items-center space-x-2 px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg">🚪 <span>Logout</span></button>
+            // Add/Edit item modal
+            const itemModal = (showAddForm || editingItem) && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+                        <h3 className="text-xl font-bold mb-4">{editingItem ? `Edit: ${editingItem.title}` : 'Add New Item'}</h3>
+                        <form onSubmit={editingItem ? handleEditItem : handleAddNew} className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium mb-1">Title * <span className="text-gray-500 font-normal">(max 30 characters)</span></label>
+                                <input type="text" value={formData.title} onChange={(e) => setFormData({...formData, title: e.target.value})} className="w-full px-4 py-2 border rounded-lg" required maxLength={30} />
+                                <div className="text-xs text-gray-500 mt-1">{formData.title.length}/30</div>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium mb-1">Type *</label>
+                                <select value={formData.type} onChange={(e) => setFormData({...formData, type: e.target.value})} className="w-full px-4 py-2 border rounded-lg" required>
+                                    <option value="">Select...</option>
+                                    {ARTWORK_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium mb-1">Medium *</label>
+                                <input type="text" value={formData.medium} onChange={(e) => setFormData({...formData, medium: e.target.value})} className="w-full px-4 py-2 border rounded-lg" placeholder="e.g., Oil on Canvas" required />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium mb-1">Description</label>
+                                <textarea value={formData.description} onChange={(e) => setFormData({...formData, description: e.target.value})} className="w-full px-4 py-2 border rounded-lg" rows="2" />
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium mb-1">Height (inches) *</label>
+                                    <input type="number" step="0.1" value={formData.height} onChange={(e) => setFormData({...formData, height: e.target.value})} className="w-full px-4 py-2 border rounded-lg" required />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium mb-1">Width (inches) *</label>
+                                    <input type="number" step="0.1" value={formData.width} onChange={(e) => setFormData({...formData, width: e.target.value})} className="w-full px-4 py-2 border rounded-lg" required />
+                                </div>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium mb-1">Price ($) *</label>
+                                <input type="number" step="0.01" value={formData.price} onChange={(e) => setFormData({...formData, price: e.target.value})} className="w-full px-4 py-2 border rounded-lg" required />
+                            </div>
+                            <div className="flex gap-3 pt-4">
+                                <button type="submit" disabled={processing} className="flex-1 bg-orange-600 hover:bg-orange-700 disabled:bg-gray-400 text-white font-semibold py-2 rounded-lg">
+                                    {processing ? '⏳ Processing...' : editingItem ? '💾 Update in Square' : '➕ Add to Square'}
+                                </button>
+                                <button type="button" onClick={() => {setShowAddForm(false); setEditingItem(null); setFormData({title:'',type:'',medium:'',description:'',height:'',width:'',price:'',quantity:'1'});}} className="flex-1 bg-gray-200 hover:bg-gray-300 py-2 rounded-lg">Cancel</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            );
+
+            // Admin: Add artist modal
+            const addArtistModal = showAddArtist && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md">
+                        <h3 className="text-xl font-bold mb-4">Add New Artist</h3>
+                        <div className="space-y-4">
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium mb-1">First Name</label>
+                                    <input type="text" value={newArtist.firstName} onChange={(e) => setNewArtist({...newArtist, firstName: e.target.value})} className="w-full px-3 py-2 border rounded-lg" />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium mb-1">Last Name</label>
+                                    <input type="text" value={newArtist.lastName} onChange={(e) => setNewArtist({...newArtist, lastName: e.target.value})} className="w-full px-3 py-2 border rounded-lg" />
+                                </div>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium mb-2">Type</label>
+                                <div className="space-y-2">
+                                    <label className="flex items-center"><input type="radio" checked={newArtist.type === 'coop'} onChange={() => setNewArtist({...newArtist, type: 'coop'})} className="mr-2" />Co-op (20%)</label>
+                                    <label className="flex items-center"><input type="radio" checked={newArtist.type === 'consignment'} onChange={() => setNewArtist({...newArtist, type: 'consignment'})} className="mr-2" />Consignment (50%)</label>
+                                    <label className="flex items-center"><input type="radio" checked={newArtist.type === 'special'} onChange={() => setNewArtist({...newArtist, type: 'special'})} className="mr-2" />Special (custom)</label>
+                                </div>
+                            </div>
+                            {newArtist.type === 'special' && (
+                                <div>
+                                    <label className="block text-sm font-medium mb-1">Rate (%)</label>
+                                    <input type="number" value={newArtist.customRate} onChange={(e) => setNewArtist({...newArtist, customRate: e.target.value})} className="w-full px-3 py-2 border rounded-lg" />
+                                </div>
+                            )}
+                            <div className="flex gap-3">
+                                <button onClick={handleAddArtist} disabled={!newArtist.firstName || !newArtist.lastName} className="flex-1 bg-green-600 hover:bg-green-700 disabled:bg-gray-300 text-white py-2 rounded-lg">Create</button>
+                                <button onClick={() => setShowAddArtist(false)} className="flex-1 bg-gray-200 hover:bg-gray-300 py-2 rounded-lg">Cancel</button>
                             </div>
                         </div>
                     </div>
-                    <div className="max-w-4xl mx-auto px-4 py-8">
-                        <div className="bg-white rounded-lg shadow-sm p-6 mb-8">
-                            <h2 className="text-lg font-semibold mb-4">Your Status</h2>
-                            <div className="grid grid-cols-3 gap-4 text-center">
-                                <div className="bg-yellow-50 rounded-lg p-4"><div className="text-3xl font-bold text-yellow-600">{myPending.length}</div><div className="text-sm text-gray-600">Pending</div></div>
-                                <div className="bg-blue-50 rounded-lg p-4"><div className="text-3xl font-bold text-blue-600">{myProcessed.length}</div><div className="text-sm text-gray-600">Live</div></div>
-                                <div className="bg-green-50 rounded-lg p-4"><div className="text-3xl font-bold text-green-600">{userSubmissions.length}</div><div className="text-sm text-gray-600">Total</div></div>
+                </div>
+            );
+
+            // Main logged-in view
+            return (
+                <div className="min-h-screen bg-gray-50">
+                    {passwordModal}
+                    {itemModal}
+                    {addArtistModal}
+                    
+                    {/* Header */}
+                    <div className="bg-white shadow-sm border-b">
+                        <div className="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
+                            <div>
+                                <h1 className="text-2xl font-bold text-gray-800">
+                                    {currentUser.type === 'admin' ? 'Admin Dashboard' : `Welcome, ${currentUser.name}!`}
+                                </h1>
+                                <p className="text-sm text-gray-600">Corrales Bosque Gallery</p>
+                            </div>
+                            <div className="flex items-center gap-3">
+                                <button onClick={() => setShowPasswordChange(true)} className="px-4 py-2 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-lg flex items-center gap-2">
+                                    🔑 <span className="hidden sm:inline">Password</span>
+                                </button>
+                                <button onClick={handleLogout} className="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg flex items-center gap-2">
+                                    🚪 <span className="hidden sm:inline">Logout</span>
+                                </button>
                             </div>
                         </div>
-                        <div className="bg-white rounded-lg shadow-lg p-8">
-                            <h2 className="text-2xl font-bold mb-6">Submit New Inventory</h2>
-                            <div className="mb-6 p-4 bg-gray-50 rounded-lg">
-                                <label className="block text-sm font-medium mb-3">Is this artwork:</label>
-                                <div className="space-y-2">
-                                    <label className="flex items-center cursor-pointer"><input type="radio" checked={isNewArtwork} onChange={() => setIsNewArtwork(true)} className="mr-3" />Brand new artwork</label>
-                                    <label className="flex items-center cursor-pointer"><input type="radio" checked={!isNewArtwork} onChange={() => setIsNewArtwork(false)} className="mr-3" />Variation of existing work</label>
-                                </div>
-                            </div>
-                            <form onSubmit={handleSubmit} className="space-y-6">
-                                <div>
-                                    <label className="block text-sm font-medium mb-1">Artwork Title * <span className="text-gray-500 font-normal">(max 30 characters)</span></label>
-                                    <input type="text" value={formData.title} onChange={(e) => setFormData({ ...formData, title: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg" required maxLength={30} />
-                                    <div className="text-xs text-gray-500 mt-1">{formData.title.length}/30 characters</div>
-                                    {duplicateWarning && <div className="mt-2 p-3 bg-yellow-50 border border-yellow-200 rounded-lg flex items-start">⚠️<div className="ml-2 text-sm"><p className="text-yellow-800 font-medium">Similar item found:</p><p className="text-yellow-700">"{duplicateWarning.title}" ({duplicateWarning.type})</p></div></div>}
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium mb-1">Type *</label>
-                                    <select value={formData.type} onChange={(e) => setFormData({ ...formData, type: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
-                                        <option value="">Select...</option>
-                                        {ARTWORK_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                                    </select>
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium mb-1">Medium *</label>
-                                    <input type="text" value={formData.medium} onChange={(e) => setFormData({ ...formData, medium: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="e.g., Oil on Canvas" required />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium mb-1">Description</label>
-                                    <textarea value={formData.description} onChange={(e) => setFormData({ ...formData, description: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg" rows="3" />
-                                </div>
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div><label className="block text-sm font-medium mb-1">Height (inches) *</label><input type="number" step="0.1" value={formData.height} onChange={(e) => setFormData({ ...formData, height: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg" required /></div>
-                                    <div><label className="block text-sm font-medium mb-1">Width (inches) *</label><input type="number" step="0.1" value={formData.width} onChange={(e) => setFormData({ ...formData, width: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg" required /></div>
-                                </div>
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div><label className="block text-sm font-medium mb-1">Price ($) *</label><input type="number" step="0.01" value={formData.price} onChange={(e) => setFormData({ ...formData, price: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg" required /></div>
-                                    <div><label className="block text-sm font-medium mb-1">Quantity *</label><input type="number" min="1" value={formData.quantity} onChange={(e) => setFormData({ ...formData, quantity: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg" required /></div>
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium mb-1">Discounts</label>
-                                    <input type="text" value={formData.discounts} onChange={(e) => setFormData({ ...formData, discounts: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="e.g., 10% for members" />
-                                </div>
-                                <button type="submit" className="w-full bg-orange-600 hover:bg-orange-700 text-white font-semibold py-3 rounded-lg flex items-center justify-center space-x-2">📦 <span>Submit Artwork</span></button>
-                            </form>
+                    </div>
+
+                    {/* Tabs */}
+                    <div className="bg-white border-b">
+                        <div className="max-w-7xl mx-auto px-4 flex">
+                            <button 
+                                onClick={() => setActiveTab('inventory')} 
+                                className={`px-6 py-3 font-medium ${activeTab === 'inventory' ? 'border-b-2 border-orange-600 text-orange-600' : 'text-gray-600'}`}
+                            >
+                                📦 {currentUser.type === 'admin' ? 'All Inventory' : 'My Inventory'} ({inventory.length})
+                            </button>
+                            {currentUser.type === 'admin' && (
+                                <>
+                                    <button 
+                                        onClick={() => setActiveTab('archive')} 
+                                        className={`px-6 py-3 font-medium ${activeTab === 'archive' ? 'border-b-2 border-orange-600 text-orange-600' : 'text-gray-600'}`}
+                                    >
+                                        📦 Archive ({archive.length})
+                                    </button>
+                                    <button 
+                                        onClick={() => setActiveTab('artists')} 
+                                        className={`px-6 py-3 font-medium ${activeTab === 'artists' ? 'border-b-2 border-orange-600 text-orange-600' : 'text-gray-600'}`}
+                                    >
+                                        👥 Artists
+                                    </button>
+                                </>
+                            )}
                         </div>
-                        {userSubmissions.length > 0 && (
-                            <div className="mt-8 bg-white rounded-lg shadow-lg p-8">
-                                <h2 className="text-2xl font-bold mb-6">My Submissions</h2>
-                                <div className="space-y-4">
-                                    {userSubmissions.map(sub => (
-                                        <div key={sub.id} className="border border-gray-200 rounded-lg p-4">
-                                            <div className="flex justify-between mb-2">
-                                                <h3 className="font-bold">{sub.title}</h3>
-                                                <span className={`px-3 py-1 text-xs rounded-full ${sub.status === 'pending' ? 'bg-yellow-100 text-yellow-800' : sub.status === 'processed' ? 'bg-blue-100 text-blue-800' : sub.status === 'approved' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>{sub.status === 'pending' ? '⏳ Pending' : sub.status === 'processed' ? '✓ Live' : sub.status === 'approved' ? '✓ Approved' : '✗ Rejected'}</span>
-                                            </div>
-                                            <div className="text-sm text-gray-600 grid grid-cols-2 gap-2">
-                                                <div>{sub.type} - {sub.medium}</div>
-                                                <div>{sub.dimensions}</div>
-                                                <div>${sub.price}</div>
-                                                {sub.sku && <div>SKU: {sub.sku}</div>}
-                                            </div>
-                                            {sub.status === 'rejected' && sub.rejectionReason && (
-                                                <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg">
-                                                    <p className="text-sm font-medium text-red-800">❌ Rejection Reason:</p>
-                                                    <p className="text-sm text-red-700">{sub.rejectionReason}</p>
-                                                    <p className="text-xs text-red-600 mt-2">Please address this issue and resubmit your artwork.</p>
-                                                </div>
-                                            )}
-                                            {sub.status === 'pending-update' && (
-                                                <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-                                                    <p className="text-sm text-yellow-800">⏳ Your changes are pending admin approval to sync with Square.</p>
-                                                </div>
-                                            )}
-                                            <div className="mt-3 flex justify-end">
-                                                <button onClick={() => startEditSubmission(sub)} className="px-4 py-2 bg-blue-100 hover:bg-blue-200 text-blue-700 text-sm rounded-lg flex items-center space-x-1">
-                                                    ✏️ <span>Edit</span>
-                                                </button>
-                                            </div>
+                    </div>
+
+                    {/* Content */}
+                    <div className="max-w-7xl mx-auto px-4 py-6">
+                        {activeTab === 'inventory' && (
+                            <div>
+                                {/* Toolbar */}
+                                <div className="bg-white rounded-lg shadow p-4 mb-6">
+                                    <div className="flex flex-wrap gap-4 items-center justify-between">
+                                        <div className="flex gap-3">
+                                            <button onClick={() => setShowAddForm(true)} className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg flex items-center gap-2">
+                                                ➕ Add New
+                                            </button>
+                                            <button onClick={loadInventory} disabled={loadingInventory} className="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg flex items-center gap-2">
+                                                {loadingInventory ? '⏳' : '🔄'} Refresh
+                                            </button>
                                         </div>
-                                    ))}
+                                        <div className="flex-1 max-w-md">
+                                            <input 
+                                                type="text" 
+                                                placeholder="🔍 Search by title, artist, type, medium, or SKU..." 
+                                                value={searchQuery}
+                                                onChange={(e) => setSearchQuery(e.target.value)}
+                                                className="w-full px-4 py-2 border rounded-lg"
+                                            />
+                                        </div>
+                                        <div className="flex gap-2">
+                                            <button 
+                                                onClick={() => handlePrintSelected('sku')} 
+                                                disabled={selectedItems.size === 0}
+                                                className="px-4 py-2 bg-purple-100 hover:bg-purple-200 text-purple-700 disabled:opacity-50 rounded-lg"
+                                            >
+                                                🏷️ Print SKU ({selectedItems.size})
+                                            </button>
+                                            <button 
+                                                onClick={() => handlePrintSelected('wall')} 
+                                                disabled={selectedItems.size === 0}
+                                                className="px-4 py-2 bg-pink-100 hover:bg-pink-200 text-pink-700 disabled:opacity-50 rounded-lg"
+                                            >
+                                                🖼️ Print Wall ({selectedItems.size})
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Inventory List */}
+                                {loadingInventory ? (
+                                    <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500">
+                                        ⏳ Loading inventory from Square...
+                                    </div>
+                                ) : filteredInventory.length === 0 ? (
+                                    <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500">
+                                        {searchQuery ? 'No items match your search' : 'No inventory items yet. Click "Add New" to get started!'}
+                                    </div>
+                                ) : (
+                                    <div className="space-y-2">
+                                        {/* Select All */}
+                                        <div className="bg-white rounded-lg shadow p-3 flex items-center gap-3">
+                                            <input 
+                                                type="checkbox" 
+                                                checked={selectedItems.size === filteredInventory.length && filteredInventory.length > 0}
+                                                onChange={selectAll}
+                                                className="w-5 h-5"
+                                            />
+                                            <span className="font-medium">Select All ({filteredInventory.length} items)</span>
+                                        </div>
+                                        
+                                        {/* Items */}
+                                        {filteredInventory.map(item => (
+                                            <div key={item.squareId || item.id} className="bg-white rounded-lg shadow p-4 flex items-center gap-4">
+                                                <input 
+                                                    type="checkbox" 
+                                                    checked={selectedItems.has(item.squareId || item.id)}
+                                                    onChange={() => toggleSelect(item.squareId || item.id)}
+                                                    className="w-5 h-5"
+                                                />
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="flex items-center gap-2">
+                                                        <h3 className="font-bold truncate">{item.title}</h3>
+                                                        <span className="text-green-600 text-xs">✓ Live</span>
+                                                    </div>
+                                                    <p className="text-sm text-gray-600 truncate">
+                                                        {currentUser.type === 'admin' && <span className="font-medium">{item.artistName} • </span>}
+                                                        {item.type} • {item.medium} • {item.dimensions}
+                                                    </p>
+                                                    <p className="text-xs text-gray-400">SKU: {item.sku}</p>
+                                                </div>
+                                                <div className="text-right">
+                                                    <div className="font-bold text-lg">${parseFloat(item.price).toFixed(2)}</div>
+                                                </div>
+                                                <div className="flex gap-2">
+                                                    <button onClick={() => startEdit(item)} className="px-3 py-1 bg-blue-100 hover:bg-blue-200 text-blue-700 text-sm rounded">✏️ Edit</button>
+                                                    <button onClick={() => printSKULabels([item])} className="px-3 py-1 bg-purple-100 hover:bg-purple-200 text-purple-700 text-sm rounded">🏷️</button>
+                                                    <button onClick={() => printWallLabels([item])} className="px-3 py-1 bg-pink-100 hover:bg-pink-200 text-pink-700 text-sm rounded">🖼️</button>
+                                                    <button onClick={() => handleArchive(item)} disabled={processing} className="px-3 py-1 bg-red-100 hover:bg-red-200 text-red-700 text-sm rounded">🗑️</button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {activeTab === 'archive' && currentUser.type === 'admin' && (
+                            <div>
+                                {/* Archive Toolbar */}
+                                <div className="bg-white rounded-lg shadow p-4 mb-6">
+                                    <div className="flex gap-4 items-center">
+                                        <div className="flex-1 max-w-md">
+                                            <input 
+                                                type="text" 
+                                                placeholder="🔍 Search archived items..." 
+                                                value={archiveSearch}
+                                                onChange={(e) => setArchiveSearch(e.target.value)}
+                                                className="w-full px-4 py-2 border rounded-lg"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Archive List */}
+                                {filteredArchive.length === 0 ? (
+                                    <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500">
+                                        {archiveSearch ? 'No archived items match your search' : 'No archived items yet.'}
+                                    </div>
+                                ) : (
+                                    <div className="space-y-2">
+                                        {filteredArchive.map(item => (
+                                            <div key={item.squareId || item.id} className="bg-white rounded-lg shadow p-4 flex items-center gap-4">
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="flex items-center gap-2">
+                                                        <h3 className="font-bold truncate">{item.title}</h3>
+                                                        <span className="text-gray-500 text-xs">📦 Archived</span>
+                                                    </div>
+                                                    <p className="text-sm text-gray-600 truncate">
+                                                        <span className="font-medium">{item.artistName}</span> • {item.type} • {item.medium}
+                                                    </p>
+                                                    <p className="text-xs text-gray-400">
+                                                        SKU: {item.sku} • Archived {new Date(item.archivedAt).toLocaleDateString()} by {item.archivedBy}
+                                                    </p>
+                                                </div>
+                                                <div className="text-right">
+                                                    <div className="font-bold text-lg">${parseFloat(item.price).toFixed(2)}</div>
+                                                </div>
+                                                <div className="flex gap-2">
+                                                    <button onClick={() => handleRestore(item)} disabled={processing} className="px-3 py-1 bg-green-100 hover:bg-green-200 text-green-700 text-sm rounded">
+                                                        ♻️ Restore
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {activeTab === 'artists' && currentUser.type === 'admin' && (
+                            <div>
+                                <div className="flex justify-between items-center mb-6">
+                                    <h2 className="text-2xl font-bold">Artist Management</h2>
+                                    <div className="flex gap-3">
+                                        <button onClick={() => setShowPasswords(!showPasswords)} className={`px-4 py-2 rounded-lg ${showPasswords ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100'}`}>
+                                            {showPasswords ? '🔒 Hide' : '👁️ Show'} Passwords
+                                        </button>
+                                        <button onClick={() => setShowAddArtist(true)} className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg">
+                                            ➕ Add Artist
+                                        </button>
+                                    </div>
+                                </div>
+                                <div className="bg-white rounded-lg shadow overflow-hidden">
+                                    <table className="w-full">
+                                        <thead className="bg-gray-50">
+                                            <tr>
+                                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
+                                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
+                                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Rate</th>
+                                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Username</th>
+                                                {showPasswords && <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Password</th>}
+                                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-gray-200">
+                                            {Object.entries(artistsDb).filter(([u]) => u !== 'admin').map(([username, artist]) => (
+                                                <tr key={username} className="hover:bg-gray-50">
+                                                    <td className="px-6 py-4 font-medium">{artist.name}</td>
+                                                    <td className="px-6 py-4 text-gray-600">{artist.type === 'coop' ? 'Co-op' : artist.type === 'consignment' ? 'Consignment' : 'Special'}</td>
+                                                    <td className="px-6 py-4 text-gray-600">{artist.rate}%</td>
+                                                    <td className="px-6 py-4 text-gray-600">{username}</td>
+                                                    {showPasswords && <td className="px-6 py-4 font-mono text-gray-600">{artist.password}</td>}
+                                                    <td className="px-6 py-4">
+                                                        {showPasswords && (
+                                                            <button onClick={() => handleResetPassword(username)} className="px-3 py-1 bg-yellow-100 hover:bg-yellow-200 text-yellow-700 text-sm rounded">
+                                                                🔄 Reset PW
+                                                            </button>
+                                                        )}
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
                                 </div>
                             </div>
                         )}

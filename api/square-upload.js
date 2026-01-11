@@ -1,128 +1,106 @@
-module.exports = async (req, res) => {
+// API endpoint to upload/update items in Square
+// POST: Create new items or update existing ones
+// Sets Category as "Artist Name - Type" and Reporting Category as "Artist Name"
+
+export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
+  }
+
+  const SQUARE_ACCESS_TOKEN = process.env.SQUARE_ACCESS_TOKEN;
+  const SQUARE_LOCATION_ID = process.env.SQUARE_LOCATION_ID;
+
+  if (!SQUARE_ACCESS_TOKEN || !SQUARE_LOCATION_ID) {
+    return res.status(500).json({ error: 'Square credentials not configured' });
   }
 
   try {
     const items = req.body;
     const results = [];
-    const SQUARE_ACCESS_TOKEN = process.env.SQUARE_ACCESS_TOKEN;
-    const SQUARE_LOCATION_ID = process.env.SQUARE_LOCATION_ID;
-
-    if (!SQUARE_ACCESS_TOKEN || !SQUARE_LOCATION_ID) {
-      throw new Error('Square credentials not configured');
-    }
-
-    // Cache for category IDs and reporting category IDs
-    const categoryCache = {};
-    const reportingCategoryCache = {};
-
-    // Helper function to sanitize strings for Square IDs (only alphanumeric and hyphens)
-    const sanitizeForId = (str) => {
-      return str
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '') // Remove accents
-        .replace(/[^a-zA-Z0-9\s-]/g, '') // Remove special chars except spaces and hyphens
-        .replace(/\s+/g, '-') // Replace spaces with hyphens
-        .replace(/-+/g, '-') // Collapse multiple hyphens
-        .substring(0, 50); // Limit length
-    };
-
-    // Helper function to generate SKU
-    const generateSKU = (artistName, itemId) => {
-      // Get initials from artist name (e.g., "Joan Findley-Perls" -> "JFP")
-      const initials = artistName
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '') // Remove accents
-        .split(/[\s-]+/)
-        .map(word => word.charAt(0).toUpperCase())
-        .filter(char => /[A-Z]/.test(char))
-        .join('');
-      // Add timestamp portion for uniqueness
-      const timestamp = Date.now().toString(36).toUpperCase().slice(-4);
-      return `CBG-${initials || 'X'}-${timestamp}`;
-    };
-
-    // Helper function to get or create reporting category (artist name)
-    const getOrCreateReportingCategory = async (artistName) => {
-      if (reportingCategoryCache[artistName]) {
-        return reportingCategoryCache[artistName];
-      }
-
-      // Search for existing category with artist name
-      const searchResponse = await fetch('https://connect.squareup.com/v2/catalog/search', {
-        method: 'POST',
-        headers: {
-          'Square-Version': '2024-12-18',
-          'Authorization': `Bearer ${SQUARE_ACCESS_TOKEN}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          object_types: ['CATEGORY'],
-          query: {
-            exact_query: {
-              attribute_name: 'name',
-              attribute_value: artistName
-            }
-          }
-        })
-      });
-
-      const searchData = await searchResponse.json();
-
-      if (searchData.objects && searchData.objects.length > 0) {
-        // Category exists
-        reportingCategoryCache[artistName] = searchData.objects[0].id;
-        return searchData.objects[0].id;
-      }
-
-      // Create new category for artist (reporting category)
-      const categoryResponse = await fetch('https://connect.squareup.com/v2/catalog/object', {
-        method: 'POST',
-        headers: {
-          'Square-Version': '2024-12-18',
-          'Authorization': `Bearer ${SQUARE_ACCESS_TOKEN}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          idempotency_key: `reporting-category-${sanitizeForId(artistName)}-${Date.now()}`,
-          object: {
-            type: 'CATEGORY',
-            id: `#reporting-category-${sanitizeForId(artistName)}`,
-            category_data: {
-              name: artistName
-            }
-          }
-        })
-      });
-
-      const categoryData = await categoryResponse.json();
-
-      if (!categoryResponse.ok) {
-        console.error('Reporting category creation error:', categoryData);
-        return null;
-      }
-
-      const categoryId = categoryData.catalog_object?.id;
-      if (categoryId) {
-        reportingCategoryCache[artistName] = categoryId;
-      }
-      return categoryId;
-    };
 
     for (const item of items) {
+      // Category format: "Artist Name - Type"
       const categoryName = `${item.artistName} - ${item.type}`;
-      const dimensions = `${item.height}" x ${item.width}"`;
-      const sku = generateSKU(item.artistName, item.id);
-
-      // Step 1: Get or create the reporting category (artist name only)
-      const reportingCategoryId = await getOrCreateReportingCategory(item.artistName);
-
-      // Step 2: Get or create the regular category (Artist - Type)
-      let categoryId = categoryCache[categoryName];
+      // Reporting category: just the artist name
+      const reportingCategoryName = item.artistName;
       
-      if (!categoryId) {
-        // Search for existing category
+      const dimensions = item.dimensions || `${item.height}" x ${item.width}"`;
+      
+      // Build description with metadata
+      let description = item.description || '';
+      description += `\n\nMedium: ${item.medium}`;
+      description += `\nDimensions: ${dimensions}`;
+      if (item.discounts) {
+        description += `\nDiscounts: ${item.discounts}`;
+      }
+      description = description.trim();
+
+      // Check if this is an update (has squareId) or new item
+      if (item.squareId) {
+        // UPDATE existing item
+        const updateData = {
+          idempotency_key: `update-${item.squareId}-${Date.now()}`,
+          object: {
+            type: 'ITEM',
+            id: item.squareId,
+            item_data: {
+              name: item.title,
+              description: description
+            }
+          }
+        };
+
+        // If we have a variation to update price
+        if (item.variationId && item.price) {
+          updateData.object.item_data.variations = [{
+            type: 'ITEM_VARIATION',
+            id: item.variationId,
+            item_variation_data: {
+              name: 'Regular',
+              pricing_type: 'FIXED_PRICING',
+              price_money: {
+                amount: Math.round(parseFloat(item.price) * 100),
+                currency: 'USD'
+              }
+            }
+          }];
+        }
+
+        const response = await fetch('https://connect.squareup.com/v2/catalog/object', {
+          method: 'POST',
+          headers: {
+            'Square-Version': '2024-12-18',
+            'Authorization': `Bearer ${SQUARE_ACCESS_TOKEN}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(updateData)
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          console.error('Square update error:', data);
+          results.push({
+            originalId: item.id,
+            squareId: item.squareId,
+            success: false,
+            error: data.errors?.[0]?.detail || 'Failed to update'
+          });
+        } else {
+          results.push({
+            originalId: item.id,
+            squareId: data.catalog_object?.id || item.squareId,
+            sku: data.catalog_object?.item_data?.variations?.[0]?.item_variation_data?.sku || item.sku,
+            success: true,
+            action: 'updated'
+          });
+        }
+
+      } else {
+        // CREATE new item
+        
+        // First, find or create the category
+        let categoryId = null;
         const searchResponse = await fetch('https://connect.squareup.com/v2/catalog/search', {
           method: 'POST',
           headers: {
@@ -142,13 +120,11 @@ module.exports = async (req, res) => {
         });
 
         const searchData = await searchResponse.json();
-        
-        if (searchData.objects && searchData.objects.length > 0) {
-          // Category exists
-          categoryId = searchData.objects[0].id;
-        } else {
-          // Create new category
-          const categoryResponse = await fetch('https://connect.squareup.com/v2/catalog/object', {
+        categoryId = searchData.objects?.[0]?.id;
+
+        // Create category if it doesn't exist
+        if (!categoryId) {
+          const catResponse = await fetch('https://connect.squareup.com/v2/catalog/object', {
             method: 'POST',
             headers: {
               'Square-Version': '2024-12-18',
@@ -156,10 +132,10 @@ module.exports = async (req, res) => {
               'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-              idempotency_key: `category-${sanitizeForId(categoryName)}-${Date.now()}`,
+              idempotency_key: `cat-${categoryName.replace(/\s/g, '-')}-${Date.now()}`,
               object: {
                 type: 'CATEGORY',
-                id: `#category-${sanitizeForId(categoryName)}-${item.id}`,
+                id: `#cat-${item.id}`,
                 category_data: {
                   name: categoryName
                 }
@@ -167,88 +143,13 @@ module.exports = async (req, res) => {
             })
           });
 
-          const categoryData = await categoryResponse.json();
-          
-          if (!categoryResponse.ok) {
-            console.error('Category creation error:', categoryData);
-            throw new Error(categoryData.errors?.[0]?.detail || 'Failed to create category');
-          }
-          
-          categoryId = categoryData.catalog_object?.id;
+          const catData = await catResponse.json();
+          categoryId = catData.catalog_object?.id;
         }
-        
-        // Cache it for future items with same category
-        categoryCache[categoryName] = categoryId;
-      }
 
-      // Step 3: Create the item with the category ID, SKU, and reporting category
-      const itemVariationData = {
-        name: 'Regular',
-        pricing_type: 'FIXED_PRICING',
-        price_money: {
-          amount: Math.round(parseFloat(item.price) * 100),
-          currency: 'USD'
-        },
-        sku: sku,
-        track_inventory: true,
-        location_overrides: [
-          {
-            location_id: SQUARE_LOCATION_ID,
-            track_inventory: true
-          }
-        ]
-      };
-
-      // Build item_data with reporting_category if available
-      const itemDataContent = {
-        name: item.title,
-        description: `${item.description || ''}\n\nMedium: ${item.medium}\nDimensions: ${dimensions}\nArtist: ${item.artistName}${item.discounts ? '\nDiscounts: ' + item.discounts : ''}`.trim(),
-        categories: [{ id: categoryId }],
-        variations: [
-          {
-            type: 'ITEM_VARIATION',
-            id: `#variation-${item.id}`,
-            item_variation_data: itemVariationData
-          }
-        ]
-      };
-
-      // Add reporting category (artist name) if we have it
-      if (reportingCategoryId) {
-        itemDataContent.reporting_category = { id: reportingCategoryId };
-      }
-
-      const itemData = {
-        idempotency_key: `item-${item.id}-${Date.now()}`,
-        object: {
-          type: 'ITEM',
-          id: `#item-${item.id}`,
-          item_data: itemDataContent
-        }
-      };
-
-      const response = await fetch('https://connect.squareup.com/v2/catalog/object', {
-        method: 'POST',
-        headers: {
-          'Square-Version': '2024-12-18',
-          'Authorization': `Bearer ${SQUARE_ACCESS_TOKEN}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(itemData)
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        console.error('Item creation error:', data);
-        throw new Error(data.errors?.[0]?.detail || 'Failed to upload to Square');
-      }
-
-      const variationId = data.catalog_object?.item_data?.variations?.[0]?.id;
-
-      // Step 4: Set initial inventory count
-      if (variationId && item.quantity) {
-        const inventoryResponse = await fetch('https://connect.squareup.com/v2/inventory/changes/batch-create', {
+        // Find or create the reporting category
+        let reportingCategoryId = null;
+        const reportingSearchResponse = await fetch('https://connect.squareup.com/v2/catalog/search', {
           method: 'POST',
           headers: {
             'Square-Version': '2024-12-18',
@@ -256,41 +157,104 @@ module.exports = async (req, res) => {
             'Content-Type': 'application/json'
           },
           body: JSON.stringify({
-            idempotency_key: `inventory-${item.id}-${Date.now()}`,
-            changes: [
-              {
-                type: 'ADJUSTMENT',
-                adjustment: {
-                  catalog_object_id: variationId,
-                  location_id: SQUARE_LOCATION_ID,
-                  quantity: String(item.quantity || 1),
-                  from_state: 'NONE',
-                  to_state: 'IN_STOCK',
-                  occurred_at: new Date().toISOString()
-                }
+            object_types: ['CATEGORY'],
+            query: {
+              exact_query: {
+                attribute_name: 'name',
+                attribute_value: reportingCategoryName
               }
-            ]
+            }
           })
         });
 
-        if (!inventoryResponse.ok) {
-          const invError = await inventoryResponse.json();
-          console.error('Inventory error:', invError);
-          // Don't throw - item was created, just inventory failed
-        }
-      }
+        const reportingSearchData = await reportingSearchResponse.json();
+        reportingCategoryId = reportingSearchData.objects?.[0]?.id;
 
-      results.push({
-        originalId: item.id,
-        squareId: data.catalog_object?.id,
-        variationId: variationId,
-        sku: sku,
-        category: categoryName,
-        categoryId: categoryId,
-        reportingCategoryId: reportingCategoryId,
-        artistName: item.artistName,
-        success: true
-      });
+        // Create reporting category if it doesn't exist
+        if (!reportingCategoryId) {
+          const reportingCatResponse = await fetch('https://connect.squareup.com/v2/catalog/object', {
+            method: 'POST',
+            headers: {
+              'Square-Version': '2024-12-18',
+              'Authorization': `Bearer ${SQUARE_ACCESS_TOKEN}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              idempotency_key: `repcat-${reportingCategoryName.replace(/\s/g, '-')}-${Date.now()}`,
+              object: {
+                type: 'CATEGORY',
+                id: `#repcat-${item.id}`,
+                category_data: {
+                  name: reportingCategoryName
+                }
+              }
+            })
+          });
+
+          const reportingCatData = await reportingCatResponse.json();
+          reportingCategoryId = reportingCatData.catalog_object?.id;
+        }
+
+        // Build item data
+        const itemData = {
+          idempotency_key: `item-${item.id}-${Date.now()}`,
+          object: {
+            type: 'ITEM',
+            id: `#item-${item.id}`,
+            item_data: {
+              name: item.title,
+              description: description,
+              categories: categoryId ? [{ id: categoryId }] : [],
+              reporting_category: reportingCategoryId ? { id: reportingCategoryId } : undefined,
+              variations: [
+                {
+                  type: 'ITEM_VARIATION',
+                  id: `#variation-${item.id}`,
+                  item_variation_data: {
+                    name: 'Regular',
+                    pricing_type: 'FIXED_PRICING',
+                    price_money: {
+                      amount: Math.round(parseFloat(item.price) * 100),
+                      currency: 'USD'
+                    },
+                    track_inventory: true
+                  }
+                }
+              ]
+            }
+          }
+        };
+
+        const response = await fetch('https://connect.squareup.com/v2/catalog/object', {
+          method: 'POST',
+          headers: {
+            'Square-Version': '2024-12-18',
+            'Authorization': `Bearer ${SQUARE_ACCESS_TOKEN}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(itemData)
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          console.error('Square create error:', data);
+          throw new Error(data.errors?.[0]?.detail || 'Failed to upload to Square');
+        }
+
+        const sku = data.catalog_object?.item_data?.variations?.[0]?.item_variation_data?.sku || 
+                    data.catalog_object?.id || 'NO_SKU';
+
+        results.push({
+          originalId: item.id,
+          squareId: data.catalog_object?.id,
+          variationId: data.catalog_object?.item_data?.variations?.[0]?.id,
+          sku: sku,
+          category: categoryName,
+          success: true,
+          action: 'created'
+        });
+      }
     }
 
     return res.status(200).json({
@@ -299,10 +263,10 @@ module.exports = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error:', error);
+    console.error('Square Upload Error:', error);
     return res.status(500).json({
       success: false,
       error: error.message
     });
   }
-};
+}
