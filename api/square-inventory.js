@@ -1,6 +1,7 @@
 // API endpoint to fetch inventory from Square
 // GET: Fetch all catalog items
 // Filters by artist name in category if artistName query param provided
+// Category format expected: "Artist Name - Type"
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
@@ -83,18 +84,36 @@ export default async function handler(req, res) {
       const variation = itemData.variations?.[0];
       const variationData = variation?.item_variation_data || {};
       
-      // Get category name from our categories lookup or from item
-      let categoryName = 'Unknown';
+      // Get category name - check multiple possible locations
+      let categoryName = '';
+      
+      // Try category_id first
       if (itemData.category_id && categories[itemData.category_id]) {
         categoryName = categories[itemData.category_id];
-      } else if (itemData.categories?.[0]?.id && categories[itemData.categories[0].id]) {
+      } 
+      // Then try categories array
+      else if (itemData.categories?.[0]?.id && categories[itemData.categories[0].id]) {
         categoryName = categories[itemData.categories[0].id];
+      }
+      // Then try reporting_category
+      else if (itemData.reporting_category?.id && categories[itemData.reporting_category.id]) {
+        categoryName = categories[itemData.reporting_category.id];
       }
       
       // Parse artist name from category (format: "Artist Name - Type")
-      const categoryParts = categoryName.split(' - ');
-      const artistFromCategory = categoryParts.length > 1 ? categoryParts.slice(0, -1).join(' - ') : categoryName;
-      const typeFromCategory = categoryParts.length > 1 ? categoryParts[categoryParts.length - 1] : '';
+      // Split on " - " to separate artist from type
+      let artistFromCategory = '';
+      let typeFromCategory = '';
+      
+      if (categoryName.includes(' - ')) {
+        const dashIndex = categoryName.lastIndexOf(' - ');
+        artistFromCategory = categoryName.substring(0, dashIndex);
+        typeFromCategory = categoryName.substring(dashIndex + 3);
+      } else {
+        // Fallback: category might just be artist name or type
+        artistFromCategory = categoryName;
+        typeFromCategory = '';
+      }
       
       // Parse dimensions and medium from description
       const description = itemData.description || '';
@@ -141,7 +160,7 @@ export default async function handler(req, res) {
         width: width,
         price: variationData.price_money ? (variationData.price_money.amount / 100).toFixed(2) : '0.00',
         sku: variationData.sku || item.id,
-        status: 'live', // All Square items are live
+        status: 'live',
         updatedAt: item.updated_at,
         createdAt: item.created_at
       };
@@ -150,9 +169,14 @@ export default async function handler(req, res) {
     // Filter by artist if requested
     let filteredItems = items;
     if (artistName) {
-      filteredItems = items.filter(item => 
-        item.artistName.toLowerCase() === artistName.toLowerCase()
-      );
+      const searchName = artistName.toLowerCase().trim();
+      filteredItems = items.filter(item => {
+        const itemArtist = (item.artistName || '').toLowerCase().trim();
+        // Match if artist name matches OR if category starts with artist name
+        return itemArtist === searchName || 
+               itemArtist.startsWith(searchName) ||
+               (item.category || '').toLowerCase().startsWith(searchName);
+      });
     }
 
     return res.status(200).json({
