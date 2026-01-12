@@ -36,7 +36,11 @@
             'paige.smith-wyatt': { name: 'Paige Smith-Wyatt', type: 'consignment', rate: 50, password: 'temp123', active: true },
             'chris.turri': { name: 'Chris Turri', type: 'special', rate: 30, password: 'temp123', active: true },
             'bc.nowlin': { name: 'BC Nowlin', type: 'special', rate: 40, password: 'temp123', active: true },
-            'admin': { name: 'Admin', type: 'admin', rate: 0, password: 'admin123', active: true },
+            'admin': { name: 'Admin', type: 'admin', rate: 0, password: 'admin123', active: true }
+        };
+
+        // Sub-admin accounts to be merged if missing
+        const SUB_ADMINS = {
             'admin1': { name: '', type: 'subadmin', rate: 0, password: 'temp123', active: true, needsSetup: true },
             'admin2': { name: '', type: 'subadmin', rate: 0, password: 'temp123', active: true, needsSetup: true },
             'admin3': { name: '', type: 'subadmin', rate: 0, password: 'temp123', active: true, needsSetup: true }
@@ -223,16 +227,36 @@ html, body { font-family: 'Aptos', Calibri, Arial, sans-serif; }
             const [passwordForm, setPasswordForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
             const [passwordError, setPasswordError] = useState('');
 
-            // Load artists and archive from KV on startup
+            // Load artists and archive from KV on startup - MERGE sub-admins if missing
             useEffect(() => {
                 const loadData = async () => {
                     const [savedArtists, savedArchive] = await Promise.all([
                         kvGet('cbg-artists'),
                         kvGet('cbg-archive')
                     ]);
+                    
+                    let artists = INITIAL_ARTISTS;
+                    let needsSave = false;
+                    
                     if (savedArtists && typeof savedArtists === 'object') {
-                        setArtistsDb(savedArtists);
+                        artists = savedArtists;
+                        
+                        // Check if sub-admins need to be added
+                        for (const [username, data] of Object.entries(SUB_ADMINS)) {
+                            if (!artists[username]) {
+                                artists[username] = data;
+                                needsSave = true;
+                            }
+                        }
+                        
+                        // Save if we added sub-admins
+                        if (needsSave) {
+                            await kvSet('cbg-artists', artists);
+                        }
                     }
+                    
+                    setArtistsDb(artists);
+                    
                     if (Array.isArray(savedArchive)) {
                         setArchive(savedArchive);
                     }
@@ -530,32 +554,62 @@ html, body { font-family: 'Aptos', Calibri, Arial, sans-serif; }
                 alert(`Password reset!\n\nNew password: ${newPassword}${user.type === 'subadmin' ? '\n\nThey will need to complete setup again on next login.' : ''}`);
             };
 
-            const handleDeleteSubAdmin = async (username) => {
-                if (!confirm(`Delete sub-admin account "${username}"?\n\nThis will deactivate the account.`)) {
+            const handleDeactivateSubAdmin = async (username) => {
+                if (!confirm(`Deactivate sub-admin account "${username}"?\n\nThey will no longer be able to log in.`)) {
                     return;
                 }
                 await saveArtists({
                     ...artistsDb,
                     [username]: {
                         ...artistsDb[username],
-                        active: false,
-                        name: '',
-                        needsSetup: true,
-                        password: 'temp123'
+                        active: false
                     }
                 });
-                alert('Sub-admin account deactivated. You can reactivate it from the Artists tab.');
+                alert('Sub-admin account deactivated.');
             };
 
             const handleReactivateSubAdmin = async (username) => {
+                const newPassword = Math.random().toString(36).slice(-8);
                 await saveArtists({
                     ...artistsDb,
                     [username]: {
                         ...artistsDb[username],
-                        active: true
+                        active: true,
+                        password: newPassword,
+                        name: '',
+                        needsSetup: true
                     }
                 });
-                alert(`Sub-admin account "${username}" reactivated!\n\nDefault password: temp123\n\nThey will need to complete setup on first login.`);
+                alert(`Sub-admin account "${username}" reactivated!\n\nNew password: ${newPassword}\n\nThey will need to complete setup on first login.`);
+            };
+
+            const handleDeactivateArtist = async (username) => {
+                const artist = artistsDb[username];
+                if (!confirm(`Deactivate artist "${artist.name}"?\n\nThey will no longer be able to log in, but their data will be preserved.`)) {
+                    return;
+                }
+                await saveArtists({
+                    ...artistsDb,
+                    [username]: {
+                        ...artist,
+                        active: false
+                    }
+                });
+                alert(`Artist "${artist.name}" has been deactivated.`);
+            };
+
+            const handleReactivateArtist = async (username) => {
+                const artist = artistsDb[username];
+                const newPassword = Math.random().toString(36).slice(-8);
+                await saveArtists({
+                    ...artistsDb,
+                    [username]: {
+                        ...artist,
+                        active: true,
+                        password: newPassword
+                    }
+                });
+                alert(`Artist "${artist.name}" reactivated!\n\nNew password: ${newPassword}`);
             };
 
             // Filter inventory by search
@@ -1110,12 +1164,10 @@ html, body { font-family: 'Aptos', Calibri, Arial, sans-serif; }
                                                                 <div className="flex gap-2">
                                                                     {admin.active ? (
                                                                         <>
-                                                                            {showPasswords && (
-                                                                                <button onClick={() => handleResetPassword(username)} className="px-3 py-1 bg-yellow-100 hover:bg-yellow-200 text-yellow-700 text-sm rounded">
-                                                                                    🔄 Reset PW
-                                                                                </button>
-                                                                            )}
-                                                                            <button onClick={() => handleDeleteSubAdmin(username)} className="px-3 py-1 bg-red-100 hover:bg-red-200 text-red-700 text-sm rounded">
+                                                                            <button onClick={() => handleResetPassword(username)} className="px-3 py-1 bg-yellow-100 hover:bg-yellow-200 text-yellow-700 text-sm rounded">
+                                                                                🔄 Reset PW
+                                                                            </button>
+                                                                            <button onClick={() => handleDeactivateSubAdmin(username)} className="px-3 py-1 bg-red-100 hover:bg-red-200 text-red-700 text-sm rounded">
                                                                                 🗑️ Deactivate
                                                                             </button>
                                                                         </>
@@ -1144,24 +1196,50 @@ html, body { font-family: 'Aptos', Calibri, Arial, sans-serif; }
                                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
                                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Rate</th>
                                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Username</th>
+                                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
                                                 {showPasswords && <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Password</th>}
                                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-gray-200">
-                                            {Object.entries(artistsDb).filter(([u, a]) => !['admin', 'subadmin'].includes(a.type) && a.type !== 'subadmin').map(([username, artist]) => (
-                                                <tr key={username} className="hover:bg-gray-50">
+                                            {Object.entries(artistsDb)
+                                                .filter(([u, a]) => !['admin', 'subadmin'].includes(a.type))
+                                                .sort(([,a], [,b]) => {
+                                                    // Active first, then alphabetical
+                                                    if (a.active !== b.active) return a.active ? -1 : 1;
+                                                    return a.name.localeCompare(b.name);
+                                                })
+                                                .map(([username, artist]) => (
+                                                <tr key={username} className={`hover:bg-gray-50 ${!artist.active ? 'opacity-60' : ''}`}>
                                                     <td className="px-6 py-4 font-medium">{artist.name}</td>
                                                     <td className="px-6 py-4 text-gray-600">{artist.type === 'coop' ? 'Co-op' : artist.type === 'consignment' ? 'Consignment' : 'Special'}</td>
                                                     <td className="px-6 py-4 text-gray-600">{artist.rate}%</td>
                                                     <td className="px-6 py-4 text-gray-600">{username}</td>
+                                                    <td className="px-6 py-4">
+                                                        {artist.active ? (
+                                                            <span className="px-2 py-1 bg-green-100 text-green-700 text-xs rounded-full">Active</span>
+                                                        ) : (
+                                                            <span className="px-2 py-1 bg-gray-100 text-gray-500 text-xs rounded-full">Inactive</span>
+                                                        )}
+                                                    </td>
                                                     {showPasswords && <td className="px-6 py-4 font-mono text-gray-600">{artist.password}</td>}
                                                     <td className="px-6 py-4">
-                                                        {showPasswords && (
-                                                            <button onClick={() => handleResetPassword(username)} className="px-3 py-1 bg-yellow-100 hover:bg-yellow-200 text-yellow-700 text-sm rounded">
-                                                                🔄 Reset PW
-                                                            </button>
-                                                        )}
+                                                        <div className="flex gap-2">
+                                                            {artist.active ? (
+                                                                <>
+                                                                    <button onClick={() => handleResetPassword(username)} className="px-3 py-1 bg-yellow-100 hover:bg-yellow-200 text-yellow-700 text-sm rounded">
+                                                                        🔄 Reset PW
+                                                                    </button>
+                                                                    <button onClick={() => handleDeactivateArtist(username)} className="px-3 py-1 bg-red-100 hover:bg-red-200 text-red-700 text-sm rounded">
+                                                                        🗑️ Deactivate
+                                                                    </button>
+                                                                </>
+                                                            ) : (
+                                                                <button onClick={() => handleReactivateArtist(username)} className="px-3 py-1 bg-green-100 hover:bg-green-200 text-green-700 text-sm rounded">
+                                                                    ✅ Reactivate
+                                                                </button>
+                                                            )}
+                                                        </div>
                                                     </td>
                                                 </tr>
                                             ))}
