@@ -540,4 +540,110 @@ export default function InventoryPortal({ member, onLogout }: InventoryPortalPro
               </div>
             ) : filteredInventory.length === 0 ? (
               <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500">
-                {searchQuery ? 'No items match your search' : 'No invento
+                {searchQuery ? 'No items match your search' : 'No inventory items yet. Click "Add New" to get started!'}
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {/* Select All */}
+                <div className="bg-white rounded-lg shadow p-3 flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    checked={selectedItems.size === filteredInventory.length && filteredInventory.length > 0}
+                    onChange={selectAll}
+                    className="w-5 h-5"
+                  />
+                  <span className="font-medium">Select All ({filteredInventory.length} items)</span>
+                </div>
+
+                {/* Items */}
+                {filteredInventory.map(item => (
+                  <div key={item.squareId || item.id} className="bg-white rounded-lg shadow p-4 flex items-center gap-4">
+                    <input
+                      type="checkbox"
+                      checked={selectedItems.has(item.squareId || item.id)}
+                      onChange={() => toggleSelect(item.squareId || item.id)}
+                      className="w-5 h-5"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-bold truncate">{item.title}</h3>
+                        <span className="text-green-600 text-xs">✓ Live</span>
+                      </div>
+                      <p className="text-sm text-gray-600 truncate">
+                        {isAdmin(member) && <span className="font-medium">{item.artistName} • </span>}
+                        {item.type} • {item.medium} • {item.dimensions}
+                      </p>
+                      <p className="text-xs text-gray-400">SKU: {item.sku}</p>
+                    </div>
+                    <div className="text-right">
+                      <div className="font-bold text-lg">${parseFloat(item.price).toFixed(2)}</div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={() => startEdit(item)} className="px-3 py-1 bg-blue-100 hover:bg-blue-200 text-blue-700 text-sm rounded">✏️ Edit</button>
+                      <button onClick={() => printSKULabels([item])} className="px-3 py-1 bg-purple-100 hover:bg-purple-200 text-purple-700 text-sm rounded">🏷️</button>
+                      <button onClick={() => printWallLabels([item])} className="px-3 py-1 bg-pink-100 hover:bg-pink-200 text-pink-700 text-sm rounded">🖼️</button>
+                      <button onClick={() => handleArchive(item)} disabled={processing} className="px-3 py-1 bg-red-100 hover:bg-red-200 text-red-700 text-sm rounded">🗑️</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === 'archive' && isAdmin(member) && (
+          <div>
+            {/* Archive Toolbar */}
+            <div className="bg-white rounded-lg shadow p-4 mb-6">
+              <div className="flex gap-4 items-center">
+                <div className="flex-1 max-w-md">
+                  <input
+                    type="text"
+                    placeholder="🔍 Search archived items..."
+                    value={archiveSearch}
+                    onChange={(e) => setArchiveSearch(e.target.value)}
+                    className="w-full px-4 py-2 border rounded-lg"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Archive List */}
+            {filteredArchive.length === 0 ? (
+              <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500">
+                {archiveSearch ? 'No archived items match your search' : 'No archived items yet.'}
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {filteredArchive.map(item => (
+                  <div key={item.squareId || item.id} className="bg-white rounded-lg shadow p-4 flex items-center gap-4">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-bold truncate">{item.title}</h3>
+                        <span className="text-gray-500 text-xs">📦 Archived</span>
+                      </div>
+                      <p className="text-sm text-gray-600 truncate">
+                        <span className="font-medium">{item.artistName}</span> • {item.type} • {item.medium}
+                      </p>
+                      <p className="text-xs text-gray-400">
+                        SKU: {item.sku} • Archived {new Date(item.archivedAt).toLocaleDateString()} by {item.archivedBy}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <div className="font-bold text-lg">${parseFloat(item.price).toFixed(2)}</div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={() => handleRestore(item)} disabled={processing} className="px-3 py-1 bg-green-100 hover:bg-green-200 text-green-700 text-sm rounded">
+                        ♻️ Restore
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
