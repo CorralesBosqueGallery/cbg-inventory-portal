@@ -1,39 +1,3 @@
 {
   "framework": "nextjs"
 }
-```
-
-4. Click **"Commit changes"**
-
----
-
-## Final Structure Check
-
-Your repository should now look like this:
-```
-cbg-inventory-portal/
-├── api/
-│   ├── kv.js
-│   ├── square-delete.js
-│   ├── square-inventory.js
-│   └── square-upload.js
-├── app/
-│   ├── login/
-│   │   └── page.tsx
-│   ├── globals.css
-│   ├── layout.tsx
-│   └── page.tsx
-├── components/
-│   └── InventoryPortal.tsx
-├── lib/
-│   └── supabase.ts
-├── .env.local.example
-├── index.html              ← old file, will be ignored
-├── next-env.d.ts
-├── next.config.js
-├── package.json
-├── postcss.config.js
-├── README.md
-├── tailwind.config.js
-├── tsconfig.json
-└── vercel.json
