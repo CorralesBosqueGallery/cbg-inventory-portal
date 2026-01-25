@@ -1,6 +1,5 @@
 // API endpoint to upload/update items in Square
 // POST: Create new items or update existing ones
-// Sets Category as "Artist Name - Type" and Reporting Category as "Artist Name"
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -19,14 +18,10 @@ export default async function handler(req, res) {
     const results = [];
 
     for (const item of items) {
-      // Category format: "Artist Name - Type"
       const categoryName = `${item.artistName} - ${item.type}`;
-      // Reporting category: just the artist name
       const reportingCategoryName = item.artistName;
-      
       const dimensions = item.dimensions || `${item.height}" x ${item.width}"`;
       
-      // Build description with metadata
       let description = item.description || '';
       description += `\n\nMedium: ${item.medium}`;
       description += `\nDimensions: ${dimensions}`;
@@ -35,27 +30,25 @@ export default async function handler(req, res) {
       }
       description = description.trim();
 
-      // Check if this is an update (has squareId) or new item
       if (item.squareId) {
         // UPDATE existing item
-        const updateData = {
-          idempotency_key: `update-${item.squareId}-${Date.now()}`,
-          object: {
-            type: 'ITEM',
-            id: item.squareId,
-            item_data: {
-              name: item.title,
-              description: description
-            }
+        const updateObject = {
+          type: 'ITEM',
+          id: item.squareId,
+          version: item.version,
+          item_data: {
+            name: item.title,
+            description: description
           }
         };
 
-        // If we have a variation to update price
         if (item.variationId && item.price) {
-          updateData.object.item_data.variations = [{
+          updateObject.item_data.variations = [{
             type: 'ITEM_VARIATION',
             id: item.variationId,
+            version: item.variationVersion,
             item_variation_data: {
+              item_id: item.squareId,
               name: 'Regular',
               pricing_type: 'FIXED_PRICING',
               price_money: {
@@ -65,6 +58,11 @@ export default async function handler(req, res) {
             }
           }];
         }
+
+        const updateData = {
+          idempotency_key: `update-${item.squareId}-${Date.now()}`,
+          object: updateObject
+        };
 
         const response = await fetch('https://connect.squareup.com/v2/catalog/object', {
           method: 'POST',
@@ -98,8 +96,6 @@ export default async function handler(req, res) {
 
       } else {
         // CREATE new item
-        
-        // First, find or create the category
         let categoryId = null;
         const searchResponse = await fetch('https://connect.squareup.com/v2/catalog/search', {
           method: 'POST',
@@ -122,7 +118,6 @@ export default async function handler(req, res) {
         const searchData = await searchResponse.json();
         categoryId = searchData.objects?.[0]?.id;
 
-        // Create category if it doesn't exist
         if (!categoryId) {
           const catResponse = await fetch('https://connect.squareup.com/v2/catalog/object', {
             method: 'POST',
@@ -136,18 +131,14 @@ export default async function handler(req, res) {
               object: {
                 type: 'CATEGORY',
                 id: `#cat-${item.id}`,
-                category_data: {
-                  name: categoryName
-                }
+                category_data: { name: categoryName }
               }
             })
           });
-
           const catData = await catResponse.json();
           categoryId = catData.catalog_object?.id;
         }
 
-        // Find or create the reporting category
         let reportingCategoryId = null;
         const reportingSearchResponse = await fetch('https://connect.squareup.com/v2/catalog/search', {
           method: 'POST',
@@ -170,7 +161,6 @@ export default async function handler(req, res) {
         const reportingSearchData = await reportingSearchResponse.json();
         reportingCategoryId = reportingSearchData.objects?.[0]?.id;
 
-        // Create reporting category if it doesn't exist
         if (!reportingCategoryId) {
           const reportingCatResponse = await fetch('https://connect.squareup.com/v2/catalog/object', {
             method: 'POST',
@@ -184,18 +174,14 @@ export default async function handler(req, res) {
               object: {
                 type: 'CATEGORY',
                 id: `#repcat-${item.id}`,
-                category_data: {
-                  name: reportingCategoryName
-                }
+                category_data: { name: reportingCategoryName }
               }
             })
           });
-
           const reportingCatData = await reportingCatResponse.json();
           reportingCategoryId = reportingCatData.catalog_object?.id;
         }
 
-        // Build item data
         const itemData = {
           idempotency_key: `item-${item.id}-${Date.now()}`,
           object: {
@@ -206,21 +192,19 @@ export default async function handler(req, res) {
               description: description,
               categories: categoryId ? [{ id: categoryId }] : [],
               reporting_category: reportingCategoryId ? { id: reportingCategoryId } : undefined,
-              variations: [
-                {
-                  type: 'ITEM_VARIATION',
-                  id: `#variation-${item.id}`,
-                  item_variation_data: {
-                    name: 'Regular',
-                    pricing_type: 'FIXED_PRICING',
-                    price_money: {
-                      amount: Math.round(parseFloat(item.price) * 100),
-                      currency: 'USD'
-                    },
-                    track_inventory: true
-                  }
+              variations: [{
+                type: 'ITEM_VARIATION',
+                id: `#variation-${item.id}`,
+                item_variation_data: {
+                  name: 'Regular',
+                  pricing_type: 'FIXED_PRICING',
+                  price_money: {
+                    amount: Math.round(parseFloat(item.price) * 100),
+                    currency: 'USD'
+                  },
+                  track_inventory: true
                 }
-              ]
+              }]
             }
           }
         };
@@ -257,16 +241,10 @@ export default async function handler(req, res) {
       }
     }
 
-    return res.status(200).json({
-      success: true,
-      results: results
-    });
+    return res.status(200).json({ success: true, results: results });
 
   } catch (error) {
     console.error('Square Upload Error:', error);
-    return res.status(500).json({
-      success: false,
-      error: error.message
-    });
+    return res.status(500).json({ success: false, error: error.message });
   }
 }
