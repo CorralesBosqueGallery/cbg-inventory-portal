@@ -14,7 +14,6 @@
     <script type="text/babel">
         const { useState, useEffect, useMemo } = React;
 
-        // Artist database - stored in KV
         const INITIAL_ARTISTS = {
             'joan.findley-perls': { name: 'Joan Findley-Perls', type: 'coop', rate: 20, password: 'temp123', active: true },
             'lynne.patton': { name: 'Lynne Patton', type: 'coop', rate: 20, password: 'temp123', active: true },
@@ -39,7 +38,6 @@
             'admin': { name: 'Admin', type: 'admin', rate: 0, password: 'admin123', active: true }
         };
 
-        // Sub-admin accounts to be merged if missing
         const SUB_ADMINS = {
             'admin1': { name: '', type: 'subadmin', rate: 0, password: 'temp123', active: true, needsSetup: true },
             'admin2': { name: '', type: 'subadmin', rate: 0, password: 'temp123', active: true, needsSetup: true },
@@ -48,16 +46,12 @@
 
         const ARTWORK_TYPES = ['Painting', 'Drawing', 'Print', 'Card', 'Ornaments', 'Photography', 'Ceramics', 'Glass', 'Jewelry', 'Mixed Media', 'Wood', 'Books'];
 
-        // KV Storage helpers
         const kvGet = async (key) => {
             try {
                 const response = await fetch(`/api/kv?key=${key}`);
                 const data = await response.json();
                 return data.value ? JSON.parse(data.value) : null;
-            } catch (error) {
-                console.error('KV Get Error:', error);
-                return null;
-            }
+            } catch (error) { console.error('KV Get Error:', error); return null; }
         };
 
         const kvSet = async (key, value) => {
@@ -68,28 +62,17 @@
                     body: JSON.stringify({ key, value: JSON.stringify(value) })
                 });
                 return (await response.json()).success;
-            } catch (error) {
-                console.error('KV Set Error:', error);
-                return false;
-            }
+            } catch (error) { console.error('KV Set Error:', error); return false; }
         };
 
-        // Square API helpers
         const fetchSquareInventory = async (artistName = null) => {
             try {
-                const url = artistName 
-                    ? `/api/square-inventory?artistName=${encodeURIComponent(artistName)}`
-                    : '/api/square-inventory';
+                const url = artistName ? `/api/square-inventory?artistName=${encodeURIComponent(artistName)}` : '/api/square-inventory';
                 const response = await fetch(url);
                 const data = await response.json();
-                if (data.success) {
-                    return data.items;
-                }
+                if (data.success) return data.items;
                 throw new Error(data.error || 'Failed to fetch inventory');
-            } catch (error) {
-                console.error('Fetch inventory error:', error);
-                return [];
-            }
+            } catch (error) { console.error('Fetch inventory error:', error); return []; }
         };
 
         const uploadToSquare = async (items) => {
@@ -100,10 +83,7 @@
                     body: JSON.stringify(items)
                 });
                 return await response.json();
-            } catch (error) {
-                console.error('Upload error:', error);
-                return { success: false, error: error.message };
-            }
+            } catch (error) { console.error('Upload error:', error); return { success: false, error: error.message }; }
         };
 
         const deleteFromSquare = async (itemId) => {
@@ -114,163 +94,77 @@
                     body: JSON.stringify({ itemId })
                 });
                 return await response.json();
-            } catch (error) {
-                console.error('Delete error:', error);
-                return { success: false, error: error.message };
-            }
+            } catch (error) { console.error('Delete error:', error); return { success: false, error: error.message }; }
         };
 
-        // Print label functions
         const printSKULabels = (items) => {
             const printWindow = window.open('', '_blank');
             const labelsHTML = items.map((item, index) => {
                 const sku = item.sku || item.squareId || 'SKU-' + item.id;
-                return `<div class="label" ${index > 0 ? 'style="page-break-before: always;"' : ''}>
-                    <div class="category">${item.category || item.artistName + ' - ' + item.type}</div>
-                    <div class="price">$${parseFloat(item.price).toFixed(2)}</div>
-                    <svg class="barcode" data-sku="${sku}"></svg>
-                </div>`;
+                return `<div class="label" ${index > 0 ? 'style="page-break-before: always;"' : ''}><div class="category">${item.category || item.artistName + ' - ' + item.type}</div><div class="price">$${parseFloat(item.price).toFixed(2)}</div><svg class="barcode" data-sku="${sku}"></svg></div>`;
             }).join('');
-            printWindow.document.write(`<!DOCTYPE html><html><head><title>SKU Labels</title>
-<script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"><\/script>
-<style>
-@page { size: 2.125in 1in; margin: 0.12in; }
-* { margin: 0; padding: 0; box-sizing: border-box; }
-html, body { font-family: Arial, sans-serif; }
-.label { text-align: center; }
-.category { font-size: 11pt; font-weight: bold; margin-bottom: 2px; }
-.price { font-size: 14pt; font-weight: bold; margin-bottom: 4px; }
-.barcode { display: block; margin: 0 auto; }
-</style></head><body>${labelsHTML}
-<script>
-window.onload = function() {
-    document.querySelectorAll('.barcode').forEach(function(el) {
-        try { JsBarcode(el, el.dataset.sku, { format: "CODE128", width: 2, height: 35, displayValue: true, fontSize: 12, margin: 0 }); } catch(e) {}
-    });
-    setTimeout(function() { window.print(); }, 300);
-};
-<\/script></body></html>`);
+            printWindow.document.write(`<!DOCTYPE html><html><head><title>SKU Labels - DYMO 550 TURBO - 30336</title><script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"><\/script><style>@page { size: 2.125in 1in; margin: 0.12in; } * { margin: 0; padding: 0; box-sizing: border-box; } html, body { font-family: Arial, sans-serif; } .printer-notice { background: #fff3cd; border: 3px solid #ffc107; padding: 15px; margin: 10px; text-align: center; font-size: 14pt; font-weight: bold; } .printer-notice .printer-name { color: #d63384; font-size: 18pt; } @media print { .printer-notice { display: none; } } .label { text-align: center; } .category { font-size: 11pt; font-weight: bold; margin-bottom: 2px; } .price { font-size: 14pt; font-weight: bold; margin-bottom: 4px; } .barcode { display: block; margin: 0 auto; }</style></head><body><div class="printer-notice">⚠️ SELECT PRINTER: <span class="printer-name">DYMO 550 TURBO</span><br>Label: 2.125" x 1" (30336)</div>${labelsHTML}<script>window.onload = function() { document.querySelectorAll('.barcode').forEach(function(el) { try { JsBarcode(el, el.dataset.sku, { format: "CODE128", width: 2, height: 35, displayValue: true, fontSize: 12, margin: 0 }); } catch(e) {} }); setTimeout(function() { window.print(); }, 500); };<\/script></body></html>`);
             printWindow.document.close();
         };
 
         const printWallLabels = (items) => {
             const printWindow = window.open('', '_blank');
-            const labelsHTML = items.map((item, index) => {
-                return `<div class="label" ${index > 0 ? 'style="page-break-before: always;"' : ''}>
-                    <div class="artist">${item.artistName}</div>
-                    <div class="title">"${item.title}"</div>
-                    <div class="medium">${item.medium}</div>
-                    <div class="price">$${parseFloat(item.price).toFixed(2)}</div>
-                </div>`;
-            }).join('');
-            printWindow.document.write(`<!DOCTYPE html><html><head><title>Wall Labels</title><style>
-@page { size: 3.5in 2in; margin: 0.375in 0.15in 0.2in 0.28in; }
-* { margin: 0; padding: 0; box-sizing: border-box; }
-html, body { font-family: 'Aptos', Calibri, Arial, sans-serif; }
-.label { text-align: center; }
-.artist { font-size: 16pt; font-weight: bold; margin-bottom: 4px; }
-.title { font-size: 17pt; font-style: italic; margin-bottom: 4px; line-height: 1.1; }
-.medium { font-size: 14pt; color: #333; margin-bottom: 4px; }
-.price { font-size: 16pt; font-weight: bold; }
-</style></head><body>${labelsHTML}<script>window.onload=function(){window.print();}<\/script></body></html>`);
+            const labelsHTML = items.map((item, index) => `<div class="label" ${index > 0 ? 'style="page-break-before: always;"' : ''}><div class="artist">${item.artistName}</div><div class="title">"${item.title}"</div><div class="medium">${item.medium}</div><div class="price">$${parseFloat(item.price).toFixed(2)}</div></div>`).join('');
+            printWindow.document.write(`<!DOCTYPE html><html><head><title>Wall Labels - DYMO 550 - 30256</title><style>@page { size: 3.5in 2in; margin: 0.375in 0.15in 0.2in 0.28in; } * { margin: 0; padding: 0; box-sizing: border-box; } html, body { font-family: 'Aptos', Calibri, Arial, sans-serif; } .printer-notice { background: #d1e7dd; border: 3px solid #198754; padding: 15px; margin: 10px; text-align: center; font-size: 14pt; font-weight: bold; } .printer-notice .printer-name { color: #d63384; font-size: 18pt; } @media print { .printer-notice { display: none; } } .label { text-align: center; } .artist { font-size: 16pt; font-weight: bold; margin-bottom: 4px; } .title { font-size: 17pt; font-style: italic; margin-bottom: 4px; line-height: 1.1; } .medium { font-size: 14pt; color: #333; margin-bottom: 4px; } .price { font-size: 16pt; font-weight: bold; }</style></head><body><div class="printer-notice">⚠️ SELECT PRINTER: <span class="printer-name">DYMO 550</span><br>Label: 3.5" x 2" (30256)</div>${labelsHTML}<script>window.onload=function(){setTimeout(function(){window.print();},500);}<\/script></body></html>`);
             printWindow.document.close();
         };
 
-        // Helper to check if user is any type of admin
         const isAdmin = (user) => user && (user.type === 'admin' || user.type === 'subadmin');
         const isMainAdmin = (user) => user && user.type === 'admin';
-        const isSubAdmin = (user) => user && user.type === 'subadmin';
-
-        // Main App Component
-        function InventoryPortal() {
-            // Auth state
+        const isSubAdmin = (user) => user && user.type === 'subadmin';function InventoryPortal() {
             const [currentUser, setCurrentUser] = useState(null);
             const [loginForm, setLoginForm] = useState({ username: '', password: '', showPassword: false });
             const [loginError, setLoginError] = useState('');
             const [artistsDb, setArtistsDb] = useState(INITIAL_ARTISTS);
-            
-            // Setup state for new sub-admins
             const [showSetup, setShowSetup] = useState(false);
             const [setupForm, setSetupForm] = useState({ name: '', newPassword: '', confirmPassword: '' });
             const [setupError, setSetupError] = useState('');
-            
-            // UI state
             const [loading, setLoading] = useState(true);
             const [activeTab, setActiveTab] = useState('inventory');
             const [searchQuery, setSearchQuery] = useState('');
-            
-            // Inventory state
             const [inventory, setInventory] = useState([]);
             const [loadingInventory, setLoadingInventory] = useState(false);
             const [selectedItems, setSelectedItems] = useState(new Set());
-            
-            // Archive state
             const [archive, setArchive] = useState([]);
             const [archiveSearch, setArchiveSearch] = useState('');
-            
-            // Form state
             const [showAddForm, setShowAddForm] = useState(false);
             const [editingItem, setEditingItem] = useState(null);
-            const [formData, setFormData] = useState({ 
-                title: '', type: '', medium: '', description: '', 
-                height: '', width: '', price: '', quantity: '1' 
-            });
+            const [formData, setFormData] = useState({ title: '', type: '', medium: '', description: '', height: '', width: '', price: '', quantity: '1', artistName: '' });
             const [processing, setProcessing] = useState(false);
-            
-            // Admin state
             const [showAddArtist, setShowAddArtist] = useState(false);
             const [newArtist, setNewArtist] = useState({ firstName: '', lastName: '', type: 'coop', customRate: '' });
             const [showPasswords, setShowPasswords] = useState(false);
-            
-            // Password change state
+            const [editingArtist, setEditingArtist] = useState(null);
+            const [editArtistForm, setEditArtistForm] = useState({ name: '', type: '', rate: '' });
             const [showPasswordChange, setShowPasswordChange] = useState(false);
             const [passwordForm, setPasswordForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
             const [passwordError, setPasswordError] = useState('');
 
-            // Load artists and archive from KV on startup - MERGE sub-admins if missing
             useEffect(() => {
                 const loadData = async () => {
-                    const [savedArtists, savedArchive] = await Promise.all([
-                        kvGet('cbg-artists'),
-                        kvGet('cbg-archive')
-                    ]);
-                    
+                    const [savedArtists, savedArchive] = await Promise.all([kvGet('cbg-artists'), kvGet('cbg-archive')]);
                     let artists = INITIAL_ARTISTS;
                     let needsSave = false;
-                    
                     if (savedArtists && typeof savedArtists === 'object') {
                         artists = savedArtists;
-                        
-                        // Check if sub-admins need to be added
                         for (const [username, data] of Object.entries(SUB_ADMINS)) {
-                            if (!artists[username]) {
-                                artists[username] = data;
-                                needsSave = true;
-                            }
+                            if (!artists[username]) { artists[username] = data; needsSave = true; }
                         }
-                        
-                        // Save if we added sub-admins
-                        if (needsSave) {
-                            await kvSet('cbg-artists', artists);
-                        }
+                        if (needsSave) await kvSet('cbg-artists', artists);
                     }
-                    
                     setArtistsDb(artists);
-                    
-                    if (Array.isArray(savedArchive)) {
-                        setArchive(savedArchive);
-                    }
+                    if (Array.isArray(savedArchive)) setArchive(savedArchive);
                     setLoading(false);
                 };
                 loadData();
             }, []);
 
-            // Load inventory when user logs in (after setup if needed)
-            useEffect(() => {
-                if (currentUser && !showSetup) {
-                    loadInventory();
-                }
-            }, [currentUser, showSetup]);
+            useEffect(() => { if (currentUser && !showSetup) loadInventory(); }, [currentUser, showSetup]);
 
             const loadInventory = async () => {
                 setLoadingInventory(true);
@@ -278,23 +172,13 @@ html, body { font-family: 'Aptos', Calibri, Arial, sans-serif; }
                     const artistName = isAdmin(currentUser) ? null : currentUser.name;
                     const items = await fetchSquareInventory(artistName);
                     setInventory(items);
-                } catch (error) {
-                    console.error('Failed to load inventory:', error);
-                }
+                } catch (error) { console.error('Failed to load inventory:', error); }
                 setLoadingInventory(false);
             };
 
-            const saveArtists = async (newArtists) => {
-                setArtistsDb(newArtists);
-                await kvSet('cbg-artists', newArtists);
-            };
+            const saveArtists = async (newArtists) => { setArtistsDb(newArtists); await kvSet('cbg-artists', newArtists); };
+            const saveArchive = async (newArchive) => { setArchive(newArchive); await kvSet('cbg-archive', newArchive); };
 
-            const saveArchive = async (newArchive) => {
-                setArchive(newArchive);
-                await kvSet('cbg-archive', newArchive);
-            };
-
-            // Auth handlers
             const handleLogin = (e) => {
                 e.preventDefault();
                 const username = loginForm.username.toLowerCase().trim();
@@ -303,84 +187,33 @@ html, body { font-family: 'Aptos', Calibri, Arial, sans-serif; }
                     setCurrentUser({ username, ...artist });
                     setLoginError('');
                     setLoginForm({ username: '', password: '', showPassword: false });
-                    
-                    // Check if sub-admin needs setup
-                    if (artist.type === 'subadmin' && artist.needsSetup) {
-                        setShowSetup(true);
-                    }
-                } else {
-                    setLoginError('Invalid username or password');
-                }
+                    if (artist.type === 'subadmin' && artist.needsSetup) setShowSetup(true);
+                } else { setLoginError('Invalid username or password'); }
             };
 
-            // Sub-admin first-time setup
             const handleSetup = async (e) => {
                 e.preventDefault();
                 setSetupError('');
-                
-                if (!setupForm.name.trim()) {
-                    setSetupError('Please enter your name');
-                    return;
-                }
-                if (setupForm.newPassword.length < 6) {
-                    setSetupError('Password must be at least 6 characters');
-                    return;
-                }
-                if (setupForm.newPassword !== setupForm.confirmPassword) {
-                    setSetupError('Passwords do not match');
-                    return;
-                }
-                
-                const updatedArtists = {
-                    ...artistsDb,
-                    [currentUser.username]: {
-                        ...artistsDb[currentUser.username],
-                        name: setupForm.name.trim(),
-                        password: setupForm.newPassword,
-                        needsSetup: false
-                    }
-                };
+                if (!setupForm.name.trim()) { setSetupError('Please enter your name'); return; }
+                if (setupForm.newPassword.length < 6) { setSetupError('Password must be at least 6 characters'); return; }
+                if (setupForm.newPassword !== setupForm.confirmPassword) { setSetupError('Passwords do not match'); return; }
+                const updatedArtists = { ...artistsDb, [currentUser.username]: { ...artistsDb[currentUser.username], name: setupForm.name.trim(), password: setupForm.newPassword, needsSetup: false } };
                 await saveArtists(updatedArtists);
-                setCurrentUser({ 
-                    ...currentUser, 
-                    name: setupForm.name.trim(), 
-                    password: setupForm.newPassword,
-                    needsSetup: false 
-                });
+                setCurrentUser({ ...currentUser, name: setupForm.name.trim(), password: setupForm.newPassword, needsSetup: false });
                 setShowSetup(false);
                 setSetupForm({ name: '', newPassword: '', confirmPassword: '' });
                 alert('Account setup complete! Welcome to the Inventory Portal.');
             };
 
-            const handleLogout = () => {
-                setCurrentUser(null);
-                setInventory([]);
-                setSelectedItems(new Set());
-                setSearchQuery('');
-                setActiveTab('inventory');
-                setShowSetup(false);
-            };
+            const handleLogout = () => { setCurrentUser(null); setInventory([]); setSelectedItems(new Set()); setSearchQuery(''); setActiveTab('inventory'); setShowSetup(false); };
 
-            // Password change
             const handlePasswordChange = async (e) => {
                 e.preventDefault();
                 setPasswordError('');
-                if (passwordForm.currentPassword !== currentUser.password) {
-                    setPasswordError('Current password is incorrect');
-                    return;
-                }
-                if (passwordForm.newPassword.length < 6) {
-                    setPasswordError('New password must be at least 6 characters');
-                    return;
-                }
-                if (passwordForm.newPassword !== passwordForm.confirmPassword) {
-                    setPasswordError('New passwords do not match');
-                    return;
-                }
-                const updatedArtists = {
-                    ...artistsDb,
-                    [currentUser.username]: { ...artistsDb[currentUser.username], password: passwordForm.newPassword }
-                };
+                if (passwordForm.currentPassword !== currentUser.password) { setPasswordError('Current password is incorrect'); return; }
+                if (passwordForm.newPassword.length < 6) { setPasswordError('New password must be at least 6 characters'); return; }
+                if (passwordForm.newPassword !== passwordForm.confirmPassword) { setPasswordError('New passwords do not match'); return; }
+                const updatedArtists = { ...artistsDb, [currentUser.username]: { ...artistsDb[currentUser.username], password: passwordForm.newPassword } };
                 await saveArtists(updatedArtists);
                 setCurrentUser({ ...currentUser, password: passwordForm.newPassword });
                 setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
@@ -388,873 +221,245 @@ html, body { font-family: 'Aptos', Calibri, Arial, sans-serif; }
                 alert('Password changed successfully!');
             };
 
-            // Inventory handlers
             const handleAddNew = async (e) => {
                 e.preventDefault();
                 setProcessing(true);
-                
-                const newItem = {
-                    id: Date.now(),
-                    artistName: currentUser.name,
-                    ...formData,
-                    dimensions: `${formData.height}" x ${formData.width}"`
-                };
-                
+                const artistName = isAdmin(currentUser) ? formData.artistName : currentUser.name;
+                if (!artistName) { alert('Please select an artist'); setProcessing(false); return; }
+                const newItem = { id: Date.now(), artistName: artistName, title: formData.title, type: formData.type, medium: formData.medium, description: formData.description, height: formData.height, width: formData.width, price: formData.price, dimensions: `${formData.height}" x ${formData.width}"` };
                 const result = await uploadToSquare([newItem]);
-                
-                if (result.success) {
-                    alert('✅ Item added to Square successfully!');
-                    setFormData({ title: '', type: '', medium: '', description: '', height: '', width: '', price: '', quantity: '1' });
-                    setShowAddForm(false);
-                    loadInventory();
-                } else {
-                    alert('❌ Failed to add item: ' + (result.error || 'Unknown error'));
-                }
+                if (result.success) { alert('✅ Item added to Square successfully!'); setFormData({ title: '', type: '', medium: '', description: '', height: '', width: '', price: '', quantity: '1', artistName: '' }); setShowAddForm(false); loadInventory(); }
+                else { alert('❌ Failed to add item: ' + (result.error || 'Unknown error')); }
                 setProcessing(false);
             };
 
             const handleEditItem = async (e) => {
                 e.preventDefault();
                 setProcessing(true);
-                
-                const updatedItem = {
-                    ...editingItem,
-                    ...formData,
-                    dimensions: `${formData.height}" x ${formData.width}"`
-                };
-                
+                const updatedItem = { ...editingItem, title: formData.title, type: formData.type, medium: formData.medium, description: formData.description, height: formData.height, width: formData.width, price: formData.price, dimensions: `${formData.height}" x ${formData.width}"`, version: editingItem.version, variationVersion: editingItem.variationVersion };
                 const result = await uploadToSquare([updatedItem]);
-                
-                if (result.success) {
-                    alert('✅ Item updated in Square!');
-                    setEditingItem(null);
-                    setFormData({ title: '', type: '', medium: '', description: '', height: '', width: '', price: '', quantity: '1' });
-                    loadInventory();
-                } else {
-                    alert('❌ Failed to update: ' + (result.error || 'Unknown error'));
-                }
+                if (result.success) { alert('✅ Item updated in Square!'); setEditingItem(null); setFormData({ title: '', type: '', medium: '', description: '', height: '', width: '', price: '', quantity: '1', artistName: '' }); loadInventory(); }
+                else { alert('❌ Failed to update: ' + (result.error || 'Unknown error')); }
                 setProcessing(false);
             };
 
-            const startEdit = (item) => {
-                setFormData({
-                    title: item.title || '',
-                    type: item.type || '',
-                    medium: item.medium || '',
-                    description: item.description || '',
-                    height: item.height || '',
-                    width: item.width || '',
-                    price: item.price || '',
-                    quantity: '1'
-                });
-                setEditingItem(item);
-            };
+            const startEdit = (item) => { setFormData({ title: item.title || '', type: item.type || '', medium: item.medium || '', description: item.description || '', height: item.height || '', width: item.width || '', price: item.price || '', quantity: '1', artistName: item.artistName || '' }); setEditingItem(item); };
 
-            // Archive handler
             const handleArchive = async (item) => {
-                if (!confirm(`Archive "${item.title}"?\n\nThis will remove it from Square and save it to the archive.`)) {
-                    return;
-                }
-                
+                if (!confirm(`Archive "${item.title}"?\n\nThis will remove it from Square and save it to the archive.`)) return;
                 setProcessing(true);
-                
-                // Delete from Square
                 const deleteResult = await deleteFromSquare(item.squareId);
-                
-                if (deleteResult.success) {
-                    // Save to archive
-                    const archivedItem = {
-                        ...item,
-                        archivedAt: new Date().toISOString(),
-                        archivedBy: currentUser.name
-                    };
-                    const newArchive = [...archive, archivedItem];
-                    await saveArchive(newArchive);
-                    
-                    alert('✅ Item archived successfully!');
-                    loadInventory();
-                } else {
-                    alert('❌ Failed to archive: ' + (deleteResult.error || 'Unknown error'));
-                }
-                
+                if (deleteResult.success) { const archivedItem = { ...item, archivedAt: new Date().toISOString(), archivedBy: currentUser.name }; const newArchive = [...archive, archivedItem]; await saveArchive(newArchive); alert('✅ Item archived successfully!'); loadInventory(); }
+                else { alert('❌ Failed to archive: ' + (deleteResult.error || 'Unknown error')); }
                 setProcessing(false);
             };
 
-            // Restore from archive (admin only)
             const handleRestore = async (item) => {
-                if (!confirm(`Restore "${item.title}" to Square?`)) {
-                    return;
-                }
-                
+                if (!confirm(`Restore "${item.title}" to Square?`)) return;
                 setProcessing(true);
-                
-                // Remove archive-specific fields and re-upload
-                const { archivedAt, archivedBy, squareId, variationId, ...itemData } = item;
-                const restoreItem = {
-                    ...itemData,
-                    id: Date.now()
-                };
-                
+                const { archivedAt, archivedBy, squareId, variationId, version, variationVersion, ...itemData } = item;
+                const restoreItem = { ...itemData, id: Date.now() };
                 const result = await uploadToSquare([restoreItem]);
-                
-                if (result.success) {
-                    // Remove from archive
-                    const newArchive = archive.filter(a => a.squareId !== item.squareId);
-                    await saveArchive(newArchive);
-                    
-                    alert('✅ Item restored to Square!');
-                    loadInventory();
-                } else {
-                    alert('❌ Failed to restore: ' + (result.error || 'Unknown error'));
-                }
-                
+                if (result.success) { const newArchive = archive.filter(a => a.squareId !== item.squareId); await saveArchive(newArchive); alert('✅ Item restored to Square!'); loadInventory(); }
+                else { alert('❌ Failed to restore: ' + (result.error || 'Unknown error')); }
                 setProcessing(false);
             };
 
-            // Print handlers
-            const handlePrintSelected = (type) => {
-                const items = inventory.filter(i => selectedItems.has(i.squareId || i.id));
-                if (items.length === 0) {
-                    alert('Please select items to print');
-                    return;
-                }
-                if (type === 'sku') {
-                    printSKULabels(items);
-                } else {
-                    printWallLabels(items);
-                }
-            };
+            const handlePrintSelected = (type) => { const items = inventory.filter(i => selectedItems.has(i.squareId || i.id)); if (items.length === 0) { alert('Please select items to print'); return; } if (type === 'sku') printSKULabels(items); else printWallLabels(items); };
 
-            // Artist management (admin)
             const handleAddArtist = async () => {
                 const username = `${newArtist.firstName.toLowerCase()}.${newArtist.lastName.toLowerCase()}`.replace(/\s/g, '-');
                 const rate = newArtist.type === 'coop' ? 20 : newArtist.type === 'consignment' ? 50 : parseInt(newArtist.customRate);
-                const password = Math.random().toString(36).slice(-8);
-                await saveArtists({ 
-                    ...artistsDb, 
-                    [username]: { name: `${newArtist.firstName} ${newArtist.lastName}`, type: newArtist.type, rate, password, active: true } 
-                });
+                const password = 'temp123';
+                await saveArtists({ ...artistsDb, [username]: { name: `${newArtist.firstName} ${newArtist.lastName}`, type: newArtist.type, rate, password, active: true } });
                 alert(`Artist added!\n\nUsername: ${username}\nPassword: ${password}`);
                 setShowAddArtist(false);
                 setNewArtist({ firstName: '', lastName: '', type: 'coop', customRate: '' });
             };
 
             const handleResetPassword = async (username) => {
-                const newPassword = Math.random().toString(36).slice(-8);
+                const newPassword = 'temp123';
                 const user = artistsDb[username];
-                await saveArtists({ 
-                    ...artistsDb, 
-                    [username]: { 
-                        ...user, 
-                        password: newPassword,
-                        // If resetting a sub-admin, also reset their setup flag
-                        needsSetup: user.type === 'subadmin' ? true : undefined
-                    } 
-                });
+                await saveArtists({ ...artistsDb, [username]: { ...user, password: newPassword, needsSetup: user.type === 'subadmin' ? true : undefined } });
                 alert(`Password reset!\n\nNew password: ${newPassword}${user.type === 'subadmin' ? '\n\nThey will need to complete setup again on next login.' : ''}`);
             };
 
-            const handleDeactivateSubAdmin = async (username) => {
-                if (!confirm(`Deactivate sub-admin account "${username}"?\n\nThey will no longer be able to log in.`)) {
-                    return;
-                }
-                await saveArtists({
-                    ...artistsDb,
-                    [username]: {
-                        ...artistsDb[username],
-                        active: false
-                    }
-                });
-                alert('Sub-admin account deactivated.');
-            };
+            const handleDeactivateSubAdmin = async (username) => { if (!confirm(`Deactivate sub-admin account "${username}"?\n\nThey will no longer be able to log in.`)) return; await saveArtists({ ...artistsDb, [username]: { ...artistsDb[username], active: false } }); alert('Sub-admin account deactivated.'); };
 
-            const handleReactivateSubAdmin = async (username) => {
-                const newPassword = Math.random().toString(36).slice(-8);
-                await saveArtists({
-                    ...artistsDb,
-                    [username]: {
-                        ...artistsDb[username],
-                        active: true,
-                        password: newPassword,
-                        name: '',
-                        needsSetup: true
-                    }
-                });
-                alert(`Sub-admin account "${username}" reactivated!\n\nNew password: ${newPassword}\n\nThey will need to complete setup on first login.`);
-            };
+            const handleReactivateSubAdmin = async (username) => { const newPassword = 'temp123'; await saveArtists({ ...artistsDb, [username]: { ...artistsDb[username], active: true, password: newPassword, name: '', needsSetup: true } }); alert(`Sub-admin account "${username}" reactivated!\n\nPassword: ${newPassword}\n\nThey will need to complete setup on first login.`); };
 
-            const handleDeactivateArtist = async (username) => {
-                const artist = artistsDb[username];
-                if (!confirm(`Deactivate artist "${artist.name}"?\n\nThey will no longer be able to log in, but their data will be preserved.`)) {
-                    return;
-                }
-                await saveArtists({
-                    ...artistsDb,
-                    [username]: {
-                        ...artist,
-                        active: false
-                    }
-                });
-                alert(`Artist "${artist.name}" has been deactivated.`);
-            };
+            const handleDeactivateArtist = async (username) => { const artist = artistsDb[username]; if (!confirm(`Deactivate artist "${artist.name}"?\n\nThey will no longer be able to log in, but their data will be preserved.`)) return; await saveArtists({ ...artistsDb, [username]: { ...artist, active: false } }); alert(`Artist "${artist.name}" has been deactivated.`); };
 
-            const handleReactivateArtist = async (username) => {
-                const artist = artistsDb[username];
-                const newPassword = Math.random().toString(36).slice(-8);
-                await saveArtists({
-                    ...artistsDb,
-                    [username]: {
-                        ...artist,
-                        active: true,
-                        password: newPassword
-                    }
-                });
-                alert(`Artist "${artist.name}" reactivated!\n\nNew password: ${newPassword}`);
-            };
+            const handleReactivateArtist = async (username) => { const artist = artistsDb[username]; const newPassword = 'temp123'; await saveArtists({ ...artistsDb, [username]: { ...artist, active: true, password: newPassword } }); alert(`Artist "${artist.name}" reactivated!\n\nNew password: ${newPassword}`); };
 
-            // Filter inventory by search
-            const filteredInventory = useMemo(() => {
-                if (!searchQuery.trim()) return inventory;
-                const q = searchQuery.toLowerCase();
-                return inventory.filter(item => 
-                    item.title?.toLowerCase().includes(q) ||
-                    item.artistName?.toLowerCase().includes(q) ||
-                    item.type?.toLowerCase().includes(q) ||
-                    item.medium?.toLowerCase().includes(q) ||
-                    item.sku?.toLowerCase().includes(q)
-                );
-            }, [inventory, searchQuery]);
+            const startEditArtist = (username, artist) => { setEditArtistForm({ name: artist.name, type: artist.type, rate: artist.rate.toString() }); setEditingArtist(username); };
 
-            // Filter archive by search
-            const filteredArchive = useMemo(() => {
-                if (!archiveSearch.trim()) return archive;
-                const q = archiveSearch.toLowerCase();
-                return archive.filter(item => 
-                    item.title?.toLowerCase().includes(q) ||
-                    item.artistName?.toLowerCase().includes(q) ||
-                    item.type?.toLowerCase().includes(q) ||
-                    item.sku?.toLowerCase().includes(q)
-                );
-            }, [archive, archiveSearch]);
+            const handleEditArtist = async () => { const rate = editArtistForm.type === 'coop' ? 20 : editArtistForm.type === 'consignment' ? 50 : parseInt(editArtistForm.rate); await saveArtists({ ...artistsDb, [editingArtist]: { ...artistsDb[editingArtist], name: editArtistForm.name, type: editArtistForm.type, rate: rate } }); alert('Artist updated!'); setEditingArtist(null); setEditArtistForm({ name: '', type: '', rate: '' }); };
 
-            // Toggle selection
-            const toggleSelect = (id) => {
-                const newSet = new Set(selectedItems);
-                if (newSet.has(id)) newSet.delete(id);
-                else newSet.add(id);
-                setSelectedItems(newSet);
-            };
+            const filteredInventory = useMemo(() => { if (!searchQuery.trim()) return inventory; const q = searchQuery.toLowerCase(); return inventory.filter(item => item.title?.toLowerCase().includes(q) || item.artistName?.toLowerCase().includes(q) || item.type?.toLowerCase().includes(q) || item.medium?.toLowerCase().includes(q) || item.sku?.toLowerCase().includes(q)); }, [inventory, searchQuery]);
 
-            const selectAll = () => {
-                if (selectedItems.size === filteredInventory.length) {
-                    setSelectedItems(new Set());
-                } else {
-                    setSelectedItems(new Set(filteredInventory.map(i => i.squareId || i.id)));
-                }
-            };
+            const filteredArchive = useMemo(() => { if (!archiveSearch.trim()) return archive; const q = archiveSearch.toLowerCase(); return archive.filter(item => item.title?.toLowerCase().includes(q) || item.artistName?.toLowerCase().includes(q) || item.type?.toLowerCase().includes(q) || item.sku?.toLowerCase().includes(q)); }, [archive, archiveSearch]);
 
-            // Loading screen
-            if (loading) {
-                return (
-                    <div className="min-h-screen bg-gradient-to-br from-amber-50 to-orange-100 flex items-center justify-center">
-                        <div className="text-center">
-                            <div className="text-4xl mb-4">🎨</div>
-                            <div className="text-xl text-gray-600">Loading Gallery Portal...</div>
-                        </div>
-                    </div>
-                );
+            const activeArtists = useMemo(() => { return Object.entries(artistsDb).filter(([u, a]) => !['admin', 'subadmin'].includes(a.type) && a.active).sort(([,a], [,b]) => a.name.localeCompare(b.name)); }, [artistsDb]);
+
+            const toggleSelect = (id) => { const newSet = new Set(selectedItems); if (newSet.has(id)) newSet.delete(id); else newSet.add(id); setSelectedItems(newSet); };
+            const selectAll = () => { if (selectedItems.size === filteredInventory.length) setSelectedItems(new Set()); else setSelectedItems(new Set(filteredInventory.map(i => i.squareId || i.id))); };if (loading) {
+                return (<div className="min-h-screen bg-gradient-to-br from-amber-50 to-orange-100 flex items-center justify-center"><div className="text-center"><div className="text-4xl mb-4">🎨</div><div className="text-xl text-gray-600">Loading Gallery Portal...</div></div></div>);
             }
 
-            // Login screen
             if (!currentUser) {
                 return (
                     <div className="min-h-screen bg-gradient-to-br from-amber-50 to-orange-100 flex items-center justify-center p-4">
                         <div className="bg-white rounded-lg shadow-xl p-8 w-full max-w-md">
-                            <div className="text-center mb-8">
-                                <h1 className="text-3xl font-bold text-gray-800 mb-2">Corrales Bosque Gallery</h1>
-                                <p className="text-gray-600">Inventory Portal</p>
-                            </div>
+                            <div className="text-center mb-8"><h1 className="text-3xl font-bold text-gray-800 mb-2">Corrales Bosque Gallery</h1><p className="text-gray-600">Inventory Portal</p></div>
                             <form onSubmit={handleLogin} className="space-y-4">
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Username</label>
-                                    <input 
-                                        type="text" 
-                                        value={loginForm.username} 
-                                        onChange={(e) => setLoginForm({ ...loginForm, username: e.target.value })} 
-                                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500" 
-                                        placeholder="firstname.lastname" 
-                                        required 
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
-                                    <div className="relative">
-                                        <input 
-                                            type={loginForm.showPassword ? 'text' : 'password'} 
-                                            value={loginForm.password} 
-                                            onChange={(e) => setLoginForm({ ...loginForm, password: e.target.value })} 
-                                            className="w-full px-4 py-2 border border-gray-300 rounded-lg pr-10" 
-                                            required 
-                                        />
-                                        <button 
-                                            type="button" 
-                                            onClick={() => setLoginForm({ ...loginForm, showPassword: !loginForm.showPassword })} 
-                                            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500"
-                                        >
-                                            {loginForm.showPassword ? '🔒' : '👁️'}
-                                        </button>
-                                    </div>
-                                </div>
-                                {loginError && (
-                                    <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
-                                        ⚠️ {loginError}
-                                    </div>
-                                )}
-                                <button type="submit" className="w-full bg-orange-600 hover:bg-orange-700 text-white font-semibold py-3 rounded-lg">
-                                    Log In
-                                </button>
+                                <div><label className="block text-sm font-medium text-gray-700 mb-1">Username</label><input type="text" value={loginForm.username} onChange={(e) => setLoginForm({ ...loginForm, username: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500" placeholder="firstname.lastname" required /></div>
+                                <div><label className="block text-sm font-medium text-gray-700 mb-1">Password</label><div className="relative"><input type={loginForm.showPassword ? 'text' : 'password'} value={loginForm.password} onChange={(e) => setLoginForm({ ...loginForm, password: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg pr-10" required /><button type="button" onClick={() => setLoginForm({ ...loginForm, showPassword: !loginForm.showPassword })} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500">{loginForm.showPassword ? '🔒' : '👁️'}</button></div></div>
+                                {loginError && <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">⚠️ {loginError}</div>}
+                                <button type="submit" className="w-full bg-orange-600 hover:bg-orange-700 text-white font-semibold py-3 rounded-lg">Log In</button>
                             </form>
-                            <div className="mt-6 pt-6 border-t border-gray-200 text-center text-sm text-gray-600">
-                                <p>Initial password: <code className="bg-gray-100 px-2 py-1 rounded">temp123</code></p>
-                            </div>
+                            <div className="mt-6 pt-6 border-t border-gray-200 text-center text-sm text-gray-600"><p>Initial password: <code className="bg-gray-100 px-2 py-1 rounded">temp123</code></p></div>
                         </div>
                     </div>
                 );
             }
 
-            // Sub-admin first-time setup screen
             if (showSetup) {
                 return (
                     <div className="min-h-screen bg-gradient-to-br from-amber-50 to-orange-100 flex items-center justify-center p-4">
                         <div className="bg-white rounded-lg shadow-xl p-8 w-full max-w-md">
-                            <div className="text-center mb-8">
-                                <h1 className="text-3xl font-bold text-gray-800 mb-2">Welcome!</h1>
-                                <p className="text-gray-600">Let's set up your administrator account</p>
-                            </div>
+                            <div className="text-center mb-8"><h1 className="text-3xl font-bold text-gray-800 mb-2">Welcome!</h1><p className="text-gray-600">Let's set up your administrator account</p></div>
                             <form onSubmit={handleSetup} className="space-y-4">
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Your Full Name</label>
-                                    <input 
-                                        type="text" 
-                                        value={setupForm.name} 
-                                        onChange={(e) => setSetupForm({ ...setupForm, name: e.target.value })} 
-                                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500" 
-                                        placeholder="e.g., Jane Smith" 
-                                        required 
-                                    />
-                                    <p className="text-xs text-gray-500 mt-1">This will be your display name in the system</p>
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Create Password</label>
-                                    <input 
-                                        type="password" 
-                                        value={setupForm.newPassword} 
-                                        onChange={(e) => setSetupForm({ ...setupForm, newPassword: e.target.value })} 
-                                        className="w-full px-4 py-2 border border-gray-300 rounded-lg" 
-                                        placeholder="Minimum 6 characters"
-                                        required 
-                                        minLength={6}
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Confirm Password</label>
-                                    <input 
-                                        type="password" 
-                                        value={setupForm.confirmPassword} 
-                                        onChange={(e) => setSetupForm({ ...setupForm, confirmPassword: e.target.value })} 
-                                        className="w-full px-4 py-2 border border-gray-300 rounded-lg" 
-                                        required 
-                                    />
-                                </div>
-                                {setupError && (
-                                    <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
-                                        ⚠️ {setupError}
-                                    </div>
-                                )}
-                                <button type="submit" className="w-full bg-orange-600 hover:bg-orange-700 text-white font-semibold py-3 rounded-lg">
-                                    Complete Setup
-                                </button>
+                                <div><label className="block text-sm font-medium text-gray-700 mb-1">Your Full Name</label><input type="text" value={setupForm.name} onChange={(e) => setSetupForm({ ...setupForm, name: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500" placeholder="e.g., Jane Smith" required /><p className="text-xs text-gray-500 mt-1">This will be your display name in the system</p></div>
+                                <div><label className="block text-sm font-medium text-gray-700 mb-1">Create Password</label><input type="password" value={setupForm.newPassword} onChange={(e) => setSetupForm({ ...setupForm, newPassword: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="Minimum 6 characters" required minLength={6} /></div>
+                                <div><label className="block text-sm font-medium text-gray-700 mb-1">Confirm Password</label><input type="password" value={setupForm.confirmPassword} onChange={(e) => setSetupForm({ ...setupForm, confirmPassword: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg" required /></div>
+                                {setupError && <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">⚠️ {setupError}</div>}
+                                <button type="submit" className="w-full bg-orange-600 hover:bg-orange-700 text-white font-semibold py-3 rounded-lg">Complete Setup</button>
                             </form>
-                            <div className="mt-4 text-center">
-                                <button onClick={handleLogout} className="text-gray-500 hover:text-gray-700 text-sm">
-                                    ← Back to Login
-                                </button>
-                            </div>
+                            <div className="mt-4 text-center"><button onClick={handleLogout} className="text-gray-500 hover:text-gray-700 text-sm">← Back to Login</button></div>
                         </div>
                     </div>
                 );
             }
 
-            // Password change modal
             const passwordModal = showPasswordChange && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
                     <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md">
                         <h3 className="text-xl font-bold mb-4">Change Password</h3>
                         <form onSubmit={handlePasswordChange} className="space-y-4">
-                            <div>
-                                <label className="block text-sm font-medium mb-1">Current Password</label>
-                                <input type="password" value={passwordForm.currentPassword} onChange={(e) => setPasswordForm({...passwordForm, currentPassword: e.target.value})} className="w-full px-4 py-2 border rounded-lg" required />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium mb-1">New Password</label>
-                                <input type="password" value={passwordForm.newPassword} onChange={(e) => setPasswordForm({...passwordForm, newPassword: e.target.value})} className="w-full px-4 py-2 border rounded-lg" required minLength={6} />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium mb-1">Confirm Password</label>
-                                <input type="password" value={passwordForm.confirmPassword} onChange={(e) => setPasswordForm({...passwordForm, confirmPassword: e.target.value})} className="w-full px-4 py-2 border rounded-lg" required />
-                            </div>
+                            <div><label className="block text-sm font-medium mb-1">Current Password</label><input type="password" value={passwordForm.currentPassword} onChange={(e) => setPasswordForm({...passwordForm, currentPassword: e.target.value})} className="w-full px-4 py-2 border rounded-lg" required /></div>
+                            <div><label className="block text-sm font-medium mb-1">New Password</label><input type="password" value={passwordForm.newPassword} onChange={(e) => setPasswordForm({...passwordForm, newPassword: e.target.value})} className="w-full px-4 py-2 border rounded-lg" required minLength={6} /></div>
+                            <div><label className="block text-sm font-medium mb-1">Confirm Password</label><input type="password" value={passwordForm.confirmPassword} onChange={(e) => setPasswordForm({...passwordForm, confirmPassword: e.target.value})} className="w-full px-4 py-2 border rounded-lg" required /></div>
                             {passwordError && <div className="text-red-600 text-sm">⚠️ {passwordError}</div>}
-                            <div className="flex gap-3">
-                                <button type="submit" className="flex-1 bg-orange-600 hover:bg-orange-700 text-white py-2 rounded-lg">Update</button>
-                                <button type="button" onClick={() => {setShowPasswordChange(false); setPasswordError('');}} className="flex-1 bg-gray-200 hover:bg-gray-300 py-2 rounded-lg">Cancel</button>
-                            </div>
+                            <div className="flex gap-3"><button type="submit" className="flex-1 bg-orange-600 hover:bg-orange-700 text-white py-2 rounded-lg">Update</button><button type="button" onClick={() => {setShowPasswordChange(false); setPasswordError('');}} className="flex-1 bg-gray-200 hover:bg-gray-300 py-2 rounded-lg">Cancel</button></div>
                         </form>
                     </div>
                 </div>
             );
 
-            // Add/Edit item modal
             const itemModal = (showAddForm || editingItem) && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
                     <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
                         <h3 className="text-xl font-bold mb-4">{editingItem ? `Edit: ${editingItem.title}` : 'Add New Item'}</h3>
                         <form onSubmit={editingItem ? handleEditItem : handleAddNew} className="space-y-4">
-                            <div>
-                                <label className="block text-sm font-medium mb-1">Title * <span className="text-gray-500 font-normal">(max 30 characters)</span></label>
-                                <input type="text" value={formData.title} onChange={(e) => setFormData({...formData, title: e.target.value})} className="w-full px-4 py-2 border rounded-lg" required maxLength={30} />
-                                <div className="text-xs text-gray-500 mt-1">{formData.title.length}/30</div>
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium mb-1">Type *</label>
-                                <select value={formData.type} onChange={(e) => setFormData({...formData, type: e.target.value})} className="w-full px-4 py-2 border rounded-lg" required>
-                                    <option value="">Select...</option>
-                                    {ARTWORK_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                                </select>
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium mb-1">Medium *</label>
-                                <input type="text" value={formData.medium} onChange={(e) => setFormData({...formData, medium: e.target.value})} className="w-full px-4 py-2 border rounded-lg" placeholder="e.g., Oil on Canvas" required />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium mb-1">Description</label>
-                                <textarea value={formData.description} onChange={(e) => setFormData({...formData, description: e.target.value})} className="w-full px-4 py-2 border rounded-lg" rows="2" />
-                            </div>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-sm font-medium mb-1">Height (inches) *</label>
-                                    <input type="number" step="0.1" value={formData.height} onChange={(e) => setFormData({...formData, height: e.target.value})} className="w-full px-4 py-2 border rounded-lg" required />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium mb-1">Width (inches) *</label>
-                                    <input type="number" step="0.1" value={formData.width} onChange={(e) => setFormData({...formData, width: e.target.value})} className="w-full px-4 py-2 border rounded-lg" required />
-                                </div>
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium mb-1">Price ($) *</label>
-                                <input type="number" step="0.01" value={formData.price} onChange={(e) => setFormData({...formData, price: e.target.value})} className="w-full px-4 py-2 border rounded-lg" required />
-                            </div>
-                            <div className="flex gap-3 pt-4">
-                                <button type="submit" disabled={processing} className="flex-1 bg-orange-600 hover:bg-orange-700 disabled:bg-gray-400 text-white font-semibold py-2 rounded-lg">
-                                    {processing ? '⏳ Processing...' : editingItem ? '💾 Update in Square' : '➕ Add to Square'}
-                                </button>
-                                <button type="button" onClick={() => {setShowAddForm(false); setEditingItem(null); setFormData({title:'',type:'',medium:'',description:'',height:'',width:'',price:'',quantity:'1'});}} className="flex-1 bg-gray-200 hover:bg-gray-300 py-2 rounded-lg">Cancel</button>
-                            </div>
+                            {isAdmin(currentUser) && !editingItem && (<div><label className="block text-sm font-medium mb-1">Artist *</label><select value={formData.artistName} onChange={(e) => setFormData({...formData, artistName: e.target.value})} className="w-full px-4 py-2 border rounded-lg" required><option value="">Select Artist...</option>{activeArtists.map(([username, artist]) => (<option key={username} value={artist.name}>{artist.name}</option>))}</select></div>)}
+                            {editingItem && (<div className="bg-gray-50 p-3 rounded-lg"><span className="text-sm text-gray-600">Artist: </span><span className="font-medium">{editingItem.artistName}</span></div>)}
+                            <div><label className="block text-sm font-medium mb-1">Title * <span className="text-gray-500 font-normal">(max 30 characters)</span></label><input type="text" value={formData.title} onChange={(e) => setFormData({...formData, title: e.target.value})} className="w-full px-4 py-2 border rounded-lg" required maxLength={30} /><div className="text-xs text-gray-500 mt-1">{formData.title.length}/30</div></div>
+                            <div><label className="block text-sm font-medium mb-1">Type *</label><select value={formData.type} onChange={(e) => setFormData({...formData, type: e.target.value})} className="w-full px-4 py-2 border rounded-lg" required><option value="">Select...</option>{ARTWORK_TYPES.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
+                            <div><label className="block text-sm font-medium mb-1">Medium *</label><input type="text" value={formData.medium} onChange={(e) => setFormData({...formData, medium: e.target.value})} className="w-full px-4 py-2 border rounded-lg" placeholder="e.g., Oil on Canvas" required /></div>
+                            <div><label className="block text-sm font-medium mb-1">Description</label><textarea value={formData.description} onChange={(e) => setFormData({...formData, description: e.target.value})} className="w-full px-4 py-2 border rounded-lg" rows="2" /></div>
+                            <div className="grid grid-cols-2 gap-4"><div><label className="block text-sm font-medium mb-1">Height (inches) *</label><input type="number" step="0.1" value={formData.height} onChange={(e) => setFormData({...formData, height: e.target.value})} className="w-full px-4 py-2 border rounded-lg" required /></div><div><label className="block text-sm font-medium mb-1">Width (inches) *</label><input type="number" step="0.1" value={formData.width} onChange={(e) => setFormData({...formData, width: e.target.value})} className="w-full px-4 py-2 border rounded-lg" required /></div></div>
+                            <div><label className="block text-sm font-medium mb-1">Price ($) *</label><input type="number" step="0.01" value={formData.price} onChange={(e) => setFormData({...formData, price: e.target.value})} className="w-full px-4 py-2 border rounded-lg" required /></div>
+                            <div className="flex gap-3 pt-4"><button type="submit" disabled={processing} className="flex-1 bg-orange-600 hover:bg-orange-700 disabled:bg-gray-400 text-white font-semibold py-2 rounded-lg">{processing ? '⏳ Processing...' : editingItem ? '💾 Update in Square' : '➕ Add to Square'}</button><button type="button" onClick={() => {setShowAddForm(false); setEditingItem(null); setFormData({title:'',type:'',medium:'',description:'',height:'',width:'',price:'',quantity:'1',artistName:''});}} className="flex-1 bg-gray-200 hover:bg-gray-300 py-2 rounded-lg">Cancel</button></div>
                         </form>
                     </div>
                 </div>
             );
 
-            // Admin: Add artist modal
             const addArtistModal = showAddArtist && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
                     <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md">
                         <h3 className="text-xl font-bold mb-4">Add New Artist</h3>
                         <div className="space-y-4">
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-sm font-medium mb-1">First Name</label>
-                                    <input type="text" value={newArtist.firstName} onChange={(e) => setNewArtist({...newArtist, firstName: e.target.value})} className="w-full px-3 py-2 border rounded-lg" />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium mb-1">Last Name</label>
-                                    <input type="text" value={newArtist.lastName} onChange={(e) => setNewArtist({...newArtist, lastName: e.target.value})} className="w-full px-3 py-2 border rounded-lg" />
-                                </div>
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium mb-2">Type</label>
-                                <div className="space-y-2">
-                                    <label className="flex items-center"><input type="radio" checked={newArtist.type === 'coop'} onChange={() => setNewArtist({...newArtist, type: 'coop'})} className="mr-2" />Co-op (20%)</label>
-                                    <label className="flex items-center"><input type="radio" checked={newArtist.type === 'consignment'} onChange={() => setNewArtist({...newArtist, type: 'consignment'})} className="mr-2" />Consignment (50%)</label>
-                                    <label className="flex items-center"><input type="radio" checked={newArtist.type === 'special'} onChange={() => setNewArtist({...newArtist, type: 'special'})} className="mr-2" />Special (custom)</label>
-                                </div>
-                            </div>
-                            {newArtist.type === 'special' && (
-                                <div>
-                                    <label className="block text-sm font-medium mb-1">Rate (%)</label>
-                                    <input type="number" value={newArtist.customRate} onChange={(e) => setNewArtist({...newArtist, customRate: e.target.value})} className="w-full px-3 py-2 border rounded-lg" />
-                                </div>
-                            )}
-                            <div className="flex gap-3">
-                                <button onClick={handleAddArtist} disabled={!newArtist.firstName || !newArtist.lastName} className="flex-1 bg-green-600 hover:bg-green-700 disabled:bg-gray-300 text-white py-2 rounded-lg">Create</button>
-                                <button onClick={() => setShowAddArtist(false)} className="flex-1 bg-gray-200 hover:bg-gray-300 py-2 rounded-lg">Cancel</button>
-                            </div>
+                            <div className="grid grid-cols-2 gap-4"><div><label className="block text-sm font-medium mb-1">First Name</label><input type="text" value={newArtist.firstName} onChange={(e) => setNewArtist({...newArtist, firstName: e.target.value})} className="w-full px-3 py-2 border rounded-lg" /></div><div><label className="block text-sm font-medium mb-1">Last Name</label><input type="text" value={newArtist.lastName} onChange={(e) => setNewArtist({...newArtist, lastName: e.target.value})} className="w-full px-3 py-2 border rounded-lg" /></div></div>
+                            <div><label className="block text-sm font-medium mb-2">Type</label><div className="space-y-2"><label className="flex items-center"><input type="radio" checked={newArtist.type === 'coop'} onChange={() => setNewArtist({...newArtist, type: 'coop'})} className="mr-2" />Co-op (20%)</label><label className="flex items-center"><input type="radio" checked={newArtist.type === 'consignment'} onChange={() => setNewArtist({...newArtist, type: 'consignment'})} className="mr-2" />Consignment (50%)</label><label className="flex items-center"><input type="radio" checked={newArtist.type === 'special'} onChange={() => setNewArtist({...newArtist, type: 'special'})} className="mr-2" />Special (custom)</label></div></div>
+                            {newArtist.type === 'special' && (<div><label className="block text-sm font-medium mb-1">Rate (%)</label><input type="number" value={newArtist.customRate} onChange={(e) => setNewArtist({...newArtist, customRate: e.target.value})} className="w-full px-3 py-2 border rounded-lg" /></div>)}
+                            <div className="flex gap-3"><button onClick={handleAddArtist} disabled={!newArtist.firstName || !newArtist.lastName} className="flex-1 bg-green-600 hover:bg-green-700 disabled:bg-gray-300 text-white py-2 rounded-lg">Create</button><button onClick={() => setShowAddArtist(false)} className="flex-1 bg-gray-200 hover:bg-gray-300 py-2 rounded-lg">Cancel</button></div>
                         </div>
                     </div>
                 </div>
             );
 
-            // Main logged-in view
-            return (
+            const editArtistModal = editingArtist && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md">
+                        <h3 className="text-xl font-bold mb-4">Edit Artist</h3>
+                        <div className="space-y-4">
+                            <div><label className="block text-sm font-medium mb-1">Display Name</label><input type="text" value={editArtistForm.name} onChange={(e) => setEditArtistForm({...editArtistForm, name: e.target.value})} className="w-full px-3 py-2 border rounded-lg" /></div>
+                            <div><label className="block text-sm font-medium mb-2">Type</label><div className="space-y-2"><label className="flex items-center"><input type="radio" checked={editArtistForm.type === 'coop'} onChange={() => setEditArtistForm({...editArtistForm, type: 'coop', rate: '20'})} className="mr-2" />Co-op (20%)</label><label className="flex items-center"><input type="radio" checked={editArtistForm.type === 'consignment'} onChange={() => setEditArtistForm({...editArtistForm, type: 'consignment', rate: '50'})} className="mr-2" />Consignment (50%)</label><label className="flex items-center"><input type="radio" checked={editArtistForm.type === 'special'} onChange={() => setEditArtistForm({...editArtistForm, type: 'special'})} className="mr-2" />Special (custom)</label></div></div>
+                            {editArtistForm.type === 'special' && (<div><label className="block text-sm font-medium mb-1">Rate (%)</label><input type="number" value={editArtistForm.rate} onChange={(e) => setEditArtistForm({...editArtistForm, rate: e.target.value})} className="w-full px-3 py-2 border rounded-lg" /></div>)}
+                            <div className="flex gap-3"><button onClick={handleEditArtist} className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg">Save Changes</button><button onClick={() => {setEditingArtist(null); setEditArtistForm({name:'',type:'',rate:''});}} className="flex-1 bg-gray-200 hover:bg-gray-300 py-2 rounded-lg">Cancel</button></div>
+                        </div>
+                    </div>
+                </div>
+            );return (
                 <div className="min-h-screen bg-gray-50">
                     {passwordModal}
                     {itemModal}
                     {addArtistModal}
+                    {editArtistModal}
                     
-                    {/* Header */}
                     <div className="bg-white shadow-sm border-b">
                         <div className="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
-                            <div>
-                                <h1 className="text-2xl font-bold text-gray-800">
-                                    {isAdmin(currentUser) ? `Admin Dashboard${isSubAdmin(currentUser) ? ` - ${currentUser.name}` : ''}` : `Welcome, ${currentUser.name}!`}
-                                </h1>
-                                <p className="text-sm text-gray-600">Corrales Bosque Gallery</p>
-                            </div>
-                            <div className="flex items-center gap-3">
-                                <button onClick={() => setShowPasswordChange(true)} className="px-4 py-2 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-lg flex items-center gap-2">
-                                    🔑 <span className="hidden sm:inline">Password</span>
-                                </button>
-                                <button onClick={handleLogout} className="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg flex items-center gap-2">
-                                    🚪 <span className="hidden sm:inline">Logout</span>
-                                </button>
-                            </div>
+                            <div><h1 className="text-2xl font-bold text-gray-800">{isAdmin(currentUser) ? `Admin Dashboard${isSubAdmin(currentUser) ? ` - ${currentUser.name}` : ''}` : `Welcome, ${currentUser.name}!`}</h1><p className="text-sm text-gray-600">Corrales Bosque Gallery</p></div>
+                            <div className="flex items-center gap-3"><button onClick={() => setShowPasswordChange(true)} className="px-4 py-2 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-lg flex items-center gap-2">🔑 <span className="hidden sm:inline">Password</span></button><button onClick={handleLogout} className="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg flex items-center gap-2">🚪 <span className="hidden sm:inline">Logout</span></button></div>
                         </div>
                     </div>
 
-                    {/* Tabs */}
                     <div className="bg-white border-b">
                         <div className="max-w-7xl mx-auto px-4 flex">
-                            <button 
-                                onClick={() => setActiveTab('inventory')} 
-                                className={`px-6 py-3 font-medium ${activeTab === 'inventory' ? 'border-b-2 border-orange-600 text-orange-600' : 'text-gray-600'}`}
-                            >
-                                📦 {isAdmin(currentUser) ? 'All Inventory' : 'My Inventory'} ({inventory.length})
-                            </button>
-                            {isAdmin(currentUser) && (
-                                <>
-                                    <button 
-                                        onClick={() => setActiveTab('archive')} 
-                                        className={`px-6 py-3 font-medium ${activeTab === 'archive' ? 'border-b-2 border-orange-600 text-orange-600' : 'text-gray-600'}`}
-                                    >
-                                        📦 Archive ({archive.length})
-                                    </button>
-                                    <button 
-                                        onClick={() => setActiveTab('artists')} 
-                                        className={`px-6 py-3 font-medium ${activeTab === 'artists' ? 'border-b-2 border-orange-600 text-orange-600' : 'text-gray-600'}`}
-                                    >
-                                        👥 Artists
-                                    </button>
-                                </>
-                            )}
+                            <button onClick={() => setActiveTab('inventory')} className={`px-6 py-3 font-medium ${activeTab === 'inventory' ? 'border-b-2 border-orange-600 text-orange-600' : 'text-gray-600'}`}>📦 {isAdmin(currentUser) ? 'All Inventory' : 'My Inventory'} ({inventory.length})</button>
+                            {isAdmin(currentUser) && (<><button onClick={() => setActiveTab('archive')} className={`px-6 py-3 font-medium ${activeTab === 'archive' ? 'border-b-2 border-orange-600 text-orange-600' : 'text-gray-600'}`}>📁 Archive ({archive.length})</button><button onClick={() => setActiveTab('artists')} className={`px-6 py-3 font-medium ${activeTab === 'artists' ? 'border-b-2 border-orange-600 text-orange-600' : 'text-gray-600'}`}>👥 Artists</button></>)}
                         </div>
                     </div>
 
-                    {/* Content */}
                     <div className="max-w-7xl mx-auto px-4 py-6">
                         {activeTab === 'inventory' && (
                             <div>
-                                {/* Toolbar */}
                                 <div className="bg-white rounded-lg shadow p-4 mb-6">
                                     <div className="flex flex-wrap gap-4 items-center justify-between">
-                                        <div className="flex gap-3">
-                                            <button onClick={() => setShowAddForm(true)} className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg flex items-center gap-2">
-                                                ➕ Add New
-                                            </button>
-                                            <button onClick={loadInventory} disabled={loadingInventory} className="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg flex items-center gap-2">
-                                                {loadingInventory ? '⏳' : '🔄'} Refresh
-                                            </button>
-                                        </div>
-                                        <div className="flex-1 max-w-md">
-                                            <input 
-                                                type="text" 
-                                                placeholder="🔍 Search by title, artist, type, medium, or SKU..." 
-                                                value={searchQuery}
-                                                onChange={(e) => setSearchQuery(e.target.value)}
-                                                className="w-full px-4 py-2 border rounded-lg"
-                                            />
-                                        </div>
-                                        <div className="flex gap-2">
-                                            <button 
-                                                onClick={() => handlePrintSelected('sku')} 
-                                                disabled={selectedItems.size === 0}
-                                                className="px-4 py-2 bg-purple-100 hover:bg-purple-200 text-purple-700 disabled:opacity-50 rounded-lg"
-                                            >
-                                                🏷️ Print SKU ({selectedItems.size})
-                                            </button>
-                                            <button 
-                                                onClick={() => handlePrintSelected('wall')} 
-                                                disabled={selectedItems.size === 0}
-                                                className="px-4 py-2 bg-pink-100 hover:bg-pink-200 text-pink-700 disabled:opacity-50 rounded-lg"
-                                            >
-                                                🖼️ Print Wall ({selectedItems.size})
-                                            </button>
-                                        </div>
+                                        <div className="flex gap-3"><button onClick={() => setShowAddForm(true)} className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg flex items-center gap-2">➕ Add New</button><button onClick={loadInventory} disabled={loadingInventory} className="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg flex items-center gap-2">{loadingInventory ? '⏳' : '🔄'} Refresh</button></div>
+                                        <div className="flex-1 max-w-md"><input type="text" placeholder="🔍 Search..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full px-4 py-2 border rounded-lg" /></div>
+                                        <div className="flex gap-2"><button onClick={() => handlePrintSelected('sku')} className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg">🏷️ SKU Labels</button><button onClick={() => handlePrintSelected('wall')} className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg">🖼️ Wall Labels</button></div>
                                     </div>
                                 </div>
-
-                                {/* Inventory List */}
-                                {loadingInventory ? (
-                                    <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500">
-                                        ⏳ Loading inventory from Square...
-                                    </div>
-                                ) : filteredInventory.length === 0 ? (
-                                    <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500">
-                                        {searchQuery ? 'No items match your search' : 'No inventory items yet. Click "Add New" to get started!'}
-                                    </div>
-                                ) : (
-                                    <div className="space-y-2">
-                                        {/* Select All */}
-                                        <div className="bg-white rounded-lg shadow p-3 flex items-center gap-3">
-                                            <input 
-                                                type="checkbox" 
-                                                checked={selectedItems.size === filteredInventory.length && filteredInventory.length > 0}
-                                                onChange={selectAll}
-                                                className="w-5 h-5"
-                                            />
-                                            <span className="font-medium">Select All ({filteredInventory.length} items)</span>
-                                        </div>
-                                        
-                                        {/* Items */}
-                                        {filteredInventory.map(item => (
-                                            <div key={item.squareId || item.id} className="bg-white rounded-lg shadow p-4 flex items-center gap-4">
-                                                <input 
-                                                    type="checkbox" 
-                                                    checked={selectedItems.has(item.squareId || item.id)}
-                                                    onChange={() => toggleSelect(item.squareId || item.id)}
-                                                    className="w-5 h-5"
-                                                />
-                                                <div className="flex-1 min-w-0">
-                                                    <div className="flex items-center gap-2">
-                                                        <h3 className="font-bold truncate">{item.title}</h3>
-                                                        <span className="text-green-600 text-xs">✓ Live</span>
-                                                    </div>
-                                                    <p className="text-sm text-gray-600 truncate">
-                                                        {isAdmin(currentUser) && <span className="font-medium">{item.artistName} • </span>}
-                                                        {item.type} • {item.medium} • {item.dimensions}
-                                                    </p>
-                                                    <p className="text-xs text-gray-400">SKU: {item.sku}</p>
-                                                </div>
-                                                <div className="text-right">
-                                                    <div className="font-bold text-lg">${parseFloat(item.price).toFixed(2)}</div>
-                                                </div>
-                                                <div className="flex gap-2">
-                                                    <button onClick={() => startEdit(item)} className="px-3 py-1 bg-blue-100 hover:bg-blue-200 text-blue-700 text-sm rounded">✏️ Edit</button>
-                                                    <button onClick={() => printSKULabels([item])} className="px-3 py-1 bg-purple-100 hover:bg-purple-200 text-purple-700 text-sm rounded">🏷️</button>
-                                                    <button onClick={() => printWallLabels([item])} className="px-3 py-1 bg-pink-100 hover:bg-pink-200 text-pink-700 text-sm rounded">🖼️</button>
-                                                    <button onClick={() => handleArchive(item)} disabled={processing} className="px-3 py-1 bg-red-100 hover:bg-red-200 text-red-700 text-sm rounded">🗑️</button>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
+                                <div className="bg-white rounded-lg shadow overflow-hidden">
+                                    <table className="w-full">
+                                        <thead className="bg-gray-50"><tr><th className="px-4 py-3 text-left"><input type="checkbox" onChange={selectAll} checked={selectedItems.size === filteredInventory.length && filteredInventory.length > 0} /></th><th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Title</th>{isAdmin(currentUser) && <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Artist</th>}<th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th><th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Price</th><th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">SKU</th><th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th></tr></thead>
+                                        <tbody className="divide-y divide-gray-200">
+                                            {filteredInventory.map(item => (<tr key={item.squareId || item.id} className="hover:bg-gray-50"><td className="px-4 py-3"><input type="checkbox" checked={selectedItems.has(item.squareId || item.id)} onChange={() => toggleSelect(item.squareId || item.id)} /></td><td className="px-4 py-3 font-medium">{item.title}</td>{isAdmin(currentUser) && <td className="px-4 py-3 text-gray-600">{item.artistName}</td>}<td className="px-4 py-3 text-gray-600">{item.type}</td><td className="px-4 py-3 text-gray-600">${parseFloat(item.price).toFixed(2)}</td><td className="px-4 py-3 text-gray-500 text-sm font-mono">{item.sku?.slice(-8)}</td><td className="px-4 py-3"><div className="flex gap-2"><button onClick={() => startEdit(item)} className="px-3 py-1 bg-blue-100 hover:bg-blue-200 text-blue-700 text-sm rounded">✏️ Edit</button><button onClick={() => handleArchive(item)} className="px-3 py-1 bg-red-100 hover:bg-red-200 text-red-700 text-sm rounded">📦 Archive</button></div></td></tr>))}
+                                        </tbody>
+                                    </table>
+                                    {filteredInventory.length === 0 && <div className="p-8 text-center text-gray-500">{loadingInventory ? '⏳ Loading...' : '📭 No items found'}</div>}
+                                </div>
                             </div>
                         )}
 
                         {activeTab === 'archive' && isAdmin(currentUser) && (
                             <div>
-                                {/* Archive Toolbar */}
-                                <div className="bg-white rounded-lg shadow p-4 mb-6">
-                                    <div className="flex gap-4 items-center">
-                                        <div className="flex-1 max-w-md">
-                                            <input 
-                                                type="text" 
-                                                placeholder="🔍 Search archived items..." 
-                                                value={archiveSearch}
-                                                onChange={(e) => setArchiveSearch(e.target.value)}
-                                                className="w-full px-4 py-2 border rounded-lg"
-                                            />
-                                        </div>
-                                    </div>
+                                <div className="bg-white rounded-lg shadow p-4 mb-6"><input type="text" placeholder="🔍 Search archive..." value={archiveSearch} onChange={(e) => setArchiveSearch(e.target.value)} className="w-full max-w-md px-4 py-2 border rounded-lg" /></div>
+                                <div className="bg-white rounded-lg shadow overflow-hidden">
+                                    <table className="w-full">
+                                        <thead className="bg-gray-50"><tr><th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Title</th><th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Artist</th><th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Archived</th><th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th></tr></thead>
+                                        <tbody className="divide-y divide-gray-200">{filteredArchive.map(item => (<tr key={item.squareId} className="hover:bg-gray-50"><td className="px-4 py-3 font-medium">{item.title}</td><td className="px-4 py-3 text-gray-600">{item.artistName}</td><td className="px-4 py-3 text-gray-500 text-sm">{new Date(item.archivedAt).toLocaleDateString()}</td><td className="px-4 py-3"><button onClick={() => handleRestore(item)} className="px-3 py-1 bg-green-100 hover:bg-green-200 text-green-700 text-sm rounded">♻️ Restore</button></td></tr>))}</tbody>
+                                    </table>
+                                    {filteredArchive.length === 0 && <div className="p-8 text-center text-gray-500">📭 Archive is empty</div>}
                                 </div>
-
-                                {/* Archive List */}
-                                {filteredArchive.length === 0 ? (
-                                    <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500">
-                                        {archiveSearch ? 'No archived items match your search' : 'No archived items yet.'}
-                                    </div>
-                                ) : (
-                                    <div className="space-y-2">
-                                        {filteredArchive.map(item => (
-                                            <div key={item.squareId || item.id} className="bg-white rounded-lg shadow p-4 flex items-center gap-4">
-                                                <div className="flex-1 min-w-0">
-                                                    <div className="flex items-center gap-2">
-                                                        <h3 className="font-bold truncate">{item.title}</h3>
-                                                        <span className="text-gray-500 text-xs">📦 Archived</span>
-                                                    </div>
-                                                    <p className="text-sm text-gray-600 truncate">
-                                                        <span className="font-medium">{item.artistName}</span> • {item.type} • {item.medium}
-                                                    </p>
-                                                    <p className="text-xs text-gray-400">
-                                                        SKU: {item.sku} • Archived {new Date(item.archivedAt).toLocaleDateString()} by {item.archivedBy}
-                                                    </p>
-                                                </div>
-                                                <div className="text-right">
-                                                    <div className="font-bold text-lg">${parseFloat(item.price).toFixed(2)}</div>
-                                                </div>
-                                                <div className="flex gap-2">
-                                                    <button onClick={() => handleRestore(item)} disabled={processing} className="px-3 py-1 bg-green-100 hover:bg-green-200 text-green-700 text-sm rounded">
-                                                        ♻️ Restore
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
                             </div>
                         )}
 
                         {activeTab === 'artists' && isAdmin(currentUser) && (
                             <div>
-                                <div className="flex justify-between items-center mb-6">
-                                    <h2 className="text-2xl font-bold">Artist Management</h2>
-                                    <div className="flex gap-3">
-                                        <button onClick={() => setShowPasswords(!showPasswords)} className={`px-4 py-2 rounded-lg ${showPasswords ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100'}`}>
-                                            {showPasswords ? '🔒 Hide' : '👁️ Show'} Passwords
-                                        </button>
-                                        <button onClick={() => setShowAddArtist(true)} className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg">
-                                            ➕ Add Artist
-                                        </button>
-                                    </div>
-                                </div>
-
-                                {/* Sub-Admins Section - Only visible to main admin */}
-                                {isMainAdmin(currentUser) && (
-                                    <div className="mb-8">
-                                        <h3 className="text-lg font-bold mb-4 text-gray-700">👤 Sub-Administrators</h3>
-                                        <div className="bg-white rounded-lg shadow overflow-hidden">
-                                            <table className="w-full">
-                                                <thead className="bg-blue-50">
-                                                    <tr>
-                                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
-                                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Username</th>
-                                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                                                        {showPasswords && <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Password</th>}
-                                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody className="divide-y divide-gray-200">
-                                                    {Object.entries(artistsDb).filter(([u, a]) => a.type === 'subadmin').map(([username, admin]) => (
-                                                        <tr key={username} className="hover:bg-gray-50">
-                                                            <td className="px-6 py-4 font-medium">
-                                                                {admin.name || <span className="text-gray-400 italic">Not set up</span>}
-                                                            </td>
-                                                            <td className="px-6 py-4 text-gray-600">{username}</td>
-                                                            <td className="px-6 py-4">
-                                                                {admin.active ? (
-                                                                    admin.needsSetup ? (
-                                                                        <span className="px-2 py-1 bg-yellow-100 text-yellow-700 text-xs rounded-full">Pending Setup</span>
-                                                                    ) : (
-                                                                        <span className="px-2 py-1 bg-green-100 text-green-700 text-xs rounded-full">Active</span>
-                                                                    )
-                                                                ) : (
-                                                                    <span className="px-2 py-1 bg-gray-100 text-gray-500 text-xs rounded-full">Inactive</span>
-                                                                )}
-                                                            </td>
-                                                            {showPasswords && <td className="px-6 py-4 font-mono text-gray-600">{admin.password}</td>}
-                                                            <td className="px-6 py-4">
-                                                                <div className="flex gap-2">
-                                                                    {admin.active ? (
-                                                                        <>
-                                                                            <button onClick={() => handleResetPassword(username)} className="px-3 py-1 bg-yellow-100 hover:bg-yellow-200 text-yellow-700 text-sm rounded">
-                                                                                🔄 Reset PW
-                                                                            </button>
-                                                                            <button onClick={() => handleDeactivateSubAdmin(username)} className="px-3 py-1 bg-red-100 hover:bg-red-200 text-red-700 text-sm rounded">
-                                                                                🗑️ Deactivate
-                                                                            </button>
-                                                                        </>
-                                                                    ) : (
-                                                                        <button onClick={() => handleReactivateSubAdmin(username)} className="px-3 py-1 bg-green-100 hover:bg-green-200 text-green-700 text-sm rounded">
-                                                                            ✅ Reactivate
-                                                                        </button>
-                                                                    )}
-                                                                </div>
-                                                            </td>
-                                                        </tr>
-                                                    ))}
-                                                </tbody>
-                                            </table>
-                                        </div>
-                                    </div>
-                                )}
-
-                                {/* Artists Section */}
-                                <h3 className="text-lg font-bold mb-4 text-gray-700">🎨 Artists</h3>
-                                <div className="bg-white rounded-lg shadow overflow-hidden">
-                                    <table className="w-full">
-                                        <thead className="bg-gray-50">
-                                            <tr>
-                                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
-                                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
-                                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Rate</th>
-                                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Username</th>
-                                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                                                {showPasswords && <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Password</th>}
-                                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-gray-200">
-                                            {Object.entries(artistsDb)
-                                                .filter(([u, a]) => !['admin', 'subadmin'].includes(a.type))
-                                                .sort(([,a], [,b]) => {
-                                                    // Active first, then alphabetical
-                                                    if (a.active !== b.active) return a.active ? -1 : 1;
-                                                    return a.name.localeCompare(b.name);
-                                                })
-                                                .map(([username, artist]) => (
-                                                <tr key={username} className={`hover:bg-gray-50 ${!artist.active ? 'opacity-60' : ''}`}>
-                                                    <td className="px-6 py-4 font-medium">{artist.name}</td>
-                                                    <td className="px-6 py-4 text-gray-600">{artist.type === 'coop' ? 'Co-op' : artist.type === 'consignment' ? 'Consignment' : 'Special'}</td>
-                                                    <td className="px-6 py-4 text-gray-600">{artist.rate}%</td>
-                                                    <td className="px-6 py-4 text-gray-600">{username}</td>
-                                                    <td className="px-6 py-4">
-                                                        {artist.active ? (
-                                                            <span className="px-2 py-1 bg-green-100 text-green-700 text-xs rounded-full">Active</span>
-                                                        ) : (
-                                                            <span className="px-2 py-1 bg-gray-100 text-gray-500 text-xs rounded-full">Inactive</span>
-                                                        )}
-                                                    </td>
-                                                    {showPasswords && <td className="px-6 py-4 font-mono text-gray-600">{artist.password}</td>}
-                                                    <td className="px-6 py-4">
-                                                        <div className="flex gap-2">
-                                                            {artist.active ? (
-                                                                <>
-                                                                    <button onClick={() => handleResetPassword(username)} className="px-3 py-1 bg-yellow-100 hover:bg-yellow-200 text-yellow-700 text-sm rounded">
-                                                                        🔄 Reset PW
-                                                                    </button>
-                                                                    <button onClick={() => handleDeactivateArtist(username)} className="px-3 py-1 bg-red-100 hover:bg-red-200 text-red-700 text-sm rounded">
-                                                                        🗑️ Deactivate
-                                                                    </button>
-                                                                </>
-                                                            ) : (
-                                                                <button onClick={() => handleReactivateArtist(username)} className="px-3 py-1 bg-green-100 hover:bg-green-200 text-green-700 text-sm rounded">
-                                                                    ✅ Reactivate
-                                                                </button>
-                                                            )}
-                                                        </div>
-                                                    </td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                </div>
-            );
-        }
-
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<InventoryPortal />);
-    </script>
-</body>
-</html>
+                                <div className="bg-white rounded-lg shadow p-4 mb-6 flex gap-4">
+                                    <button onClick={() => setShowAddArtist(true)} className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg">➕ Add Artist</button>
+                                    <button onClick={() => setShowPasswords(
