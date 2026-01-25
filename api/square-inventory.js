@@ -101,7 +101,6 @@ export default async function handler(req, res) {
       }
       
       // Parse artist name from category (format: "Artist Name - Type")
-      // Split on " - " to separate artist from type
       let artistFromCategory = '';
       let typeFromCategory = '';
       
@@ -110,7 +109,6 @@ export default async function handler(req, res) {
         artistFromCategory = categoryName.substring(0, dashIndex);
         typeFromCategory = categoryName.substring(dashIndex + 3);
       } else {
-        // Fallback: category might just be artist name or type
         artistFromCategory = categoryName;
         typeFromCategory = '';
       }
@@ -133,10 +131,8 @@ export default async function handler(req, res) {
         cleanDescription = cleanDescription.replace(/Dimensions:\s*[^\n]+\n?/i, '');
       }
       
-      // Remove discounts line from description
       cleanDescription = cleanDescription.replace(/Discounts:\s*[^\n]+\n?/i, '').trim();
       
-      // Parse height and width from dimensions
       let height = '';
       let width = '';
       const hwMatch = dimensions.match(/(\d+\.?\d*)\s*["']\s*x\s*(\d+\.?\d*)/i);
@@ -149,6 +145,8 @@ export default async function handler(req, res) {
         id: item.id,
         squareId: item.id,
         variationId: variation?.id || null,
+        version: item.version,
+        variationVersion: variation?.version || null,
         title: itemData.name || 'Untitled',
         artistName: artistFromCategory,
         category: categoryName,
@@ -172,7 +170,6 @@ export default async function handler(req, res) {
       const searchName = artistName.toLowerCase().trim();
       filteredItems = items.filter(item => {
         const itemArtist = (item.artistName || '').toLowerCase().trim();
-        // Match if artist name matches OR if category starts with artist name
         return itemArtist === searchName || 
                itemArtist.startsWith(searchName) ||
                (item.category || '').toLowerCase().startsWith(searchName);
