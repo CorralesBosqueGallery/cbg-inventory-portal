@@ -97,7 +97,7 @@
             } catch (error) { console.error('Delete error:', error); return { success: false, error: error.message }; }
         };
 
-       const printSKULabels = (items) => {
+        const printSKULabels = (items) => {
             const printWindow = window.open('', '_blank');
             const labelsHTML = items.map((item, index) => {
                 const sku = item.sku || item.squareId || 'SKU-' + item.id;
@@ -107,10 +107,10 @@
             printWindow.document.close();
         };
         
-       const printWallLabels = (items) => {
+        const printWallLabels = (items) => {
             const printWindow = window.open('', '_blank');
             const labelsHTML = items.map((item, index) => `<div class="label" ${index > 0 ? 'style="page-break-before: always;"' : ''}><div class="artist">${item.artistName}</div><div class="title">"${item.title}"</div><div class="medium">${item.medium}</div><div class="price">$${parseFloat(item.price).toFixed(2)}</div></div>`).join('');
-            printWindow.document.write(`<!DOCTYPE html><html><head><title>Wall Labels - DYMO 550 - 30374</title><style>@page { size: 2in 3.5in; margin: 0; } * { margin: 0; padding: 0; box-sizing: border-box; } html, body { font-family: 'Aptos', Calibri, Arial, sans-serif; } @media print { body > *:not(.label) { display: none !important; } } .printer-notice { background: #d1e7dd; border: 3px solid #198754; padding: 15px; text-align: center; font-size: 14pt; font-weight: bold; position: absolute; top: 200px; left: 10px; right: 10px; } .printer-notice .printer-name { color: #d63384; font-size: 18pt; } .label { text-align: center; width: 2in; height: 3.2in; padding-top: 0.4in; } .artist { font-size: 14pt; font-weight: bold; margin-bottom: 6px; } .title { font-size: 15pt; font-style: italic; margin-bottom: 6px; line-height: 1.2; } .medium { font-size: 12pt; color: #333; margin-bottom: 6px; } .price { font-size: 14pt; font-weight: bold; }</style></head><body>${labelsHTML}<div class="printer-notice">⚠️ SELECT PRINTER: <span class="printer-name">DYMO 550</span> (not Turbo!)<br>Label: 30374 (2" x 3.5") Portrait</div><script>window.onload=function(){setTimeout(function(){window.print();},500);}<\/script></body></html>`);
+            printWindow.document.write(`<!DOCTYPE html><html><head><title>Wall Labels - DYMO 550 - 30374</title><style>@page { size: 2in 3.5in; margin: 0; } * { margin: 0; padding: 0; box-sizing: border-box; } html, body { font-family: 'Aptos', Calibri, Arial, sans-serif; } @media print { body > *:not(.label) { display: none !important; } } .printer-notice { background: #d1e7dd; border: 3px solid #198754; padding: 15px; text-align: center; font-size: 14pt; font-weight: bold; position: absolute; top: 200px; left: 10px; right: 10px; } .printer-notice .printer-name { color: #d63384; font-size: 18pt; } .label { text-align: center; width: 2in; height: 2.8in; padding: 0.3in 0.1in 0; } .artist { font-size: 14pt; font-weight: bold; margin-bottom: 6px; } .title { font-size: 15pt; font-style: italic; margin-bottom: 6px; line-height: 1.2; } .medium { font-size: 12pt; color: #333; margin-bottom: 6px; } .price { font-size: 14pt; font-weight: bold; }</style></head><body>${labelsHTML}<div class="printer-notice">⚠️ SELECT PRINTER: <span class="printer-name">DYMO 550</span> (not Turbo!)<br>Label: 30374 (2" x 3.5") Portrait</div><script>window.onload=function(){setTimeout(function(){window.print();},500);}<\/script></body></html>`);
             printWindow.document.close();
         };
         
