@@ -25,38 +25,10 @@ export default async function handler(req, res) {
     return initials.substring(0, 4);
   };
 
-  const getNextSkuNumber = async (initials) => {
-    try {
-      let allItems = [];
-      let cursor = null;
-      do {
-        const response = await fetch('https://connect.squareup.com/v2/catalog/list?types=ITEM', {
-          method: 'GET',
-          headers: { 'Square-Version': '2024-12-18', 'Authorization': `Bearer ${SQUARE_ACCESS_TOKEN}`, 'Content-Type': 'application/json' }
-        });
-        const data = await response.json();
-        if (data.objects) allItems = allItems.concat(data.objects);
-        cursor = data.cursor;
-      } while (cursor);
-
-      let maxNumber = 0;
-      const skuPattern = new RegExp(`^${initials}(\\d+)$`, 'i');
-      for (const item of allItems) {
-        const variations = item.item_data?.variations || [];
-        for (const variation of variations) {
-          const sku = variation.item_variation_data?.sku || '';
-          const match = sku.match(skuPattern);
-          if (match) {
-            const num = parseInt(match[1], 10);
-            if (num > maxNumber) maxNumber = num;
-          }
-        }
-      }
-      return maxNumber + 1;
-    } catch (error) {
-      console.error('Error getting next SKU number:', error);
-      return Math.floor(Math.random() * 900) + 100;
-    }
+ // Helper function to generate a short unique SKU number
+  const getSkuNumber = () => {
+    const timestamp = Date.now().toString();
+    return timestamp.slice(-4);
   };
 
   try {
@@ -85,8 +57,8 @@ export default async function handler(req, res) {
         else { results.push({ originalId: item.id, squareId: data.catalog_object?.id || item.squareId, sku: data.catalog_object?.item_data?.variations?.[0]?.item_variation_data?.sku || item.sku, success: true, action: 'updated' }); }
       } else {
         const initials = getInitials(item.artistName);
-        const nextNum = await getNextSkuNumber(initials);
-        const sku = `${initials}${nextNum.toString().padStart(3, '0')}`;
+        const skuNum = getSkuNumber();
+        const sku = `${initials}${skuNum}`;
 
         let categoryId = null;
         const searchResponse = await fetch('https://connect.squareup.com/v2/catalog/search', { method: 'POST', headers: { 'Square-Version': '2024-12-18', 'Authorization': `Bearer ${SQUARE_ACCESS_TOKEN}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ object_types: ['CATEGORY'], query: { exact_query: { attribute_name: 'name', attribute_value: categoryName } } }) });
