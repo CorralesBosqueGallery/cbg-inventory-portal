@@ -35,7 +35,8 @@ export default async function handler(req, res) {
     const items = req.body;
     const results = [];
 
-    for (const item of items) {
+   for (const item of items) {
+      console.log('Processing item - squareId:', item.squareId, 'artistName:', item.artistName);
       const categoryName = `${item.artistName} - ${item.type}`;
       const reportingCategoryName = item.artistName;
       const dimensions = item.dimensions || `${item.height}" x ${item.width}"`;
