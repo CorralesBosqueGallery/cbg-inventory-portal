@@ -237,9 +237,10 @@
                 e.preventDefault();
                 setProcessing(true);
                 const updatedItem = { ...editingItem, artistName: editingItem.artistName, title: formData.title, type: formData.type, medium: formData.medium, description: formData.description, height: formData.height, width: formData.width, price: formData.price, dimensions: `${formData.height}" x ${formData.width}"`, version: editingItem.version, variationVersion: editingItem.variationVersion };
-                console.log('Editing item - squareId:', editingItem.squareId, 'version:', editingItem.version, 'variationVersion:', editingItem.variationVersion);
-                alert('Debug: squareId=' + editingItem.squareId + ', version=' + editingItem.version);
+                console.log('Full updatedItem being sent:', JSON.stringify(updatedItem));
+                alert('Sending squareId=' + updatedItem.squareId + ', variationId=' + updatedItem.variationId);
                 const result = await uploadToSquare([updatedItem]);
+                console.log('Upload result:', JSON.stringify(result));
                 if (result.success) { alert('✅ Item updated in Square!'); setEditingItem(null); setFormData({ title: '', type: '', medium: '', description: '', height: '', width: '', price: '', quantity: '1', artistName: '' }); loadInventory(); }
                 else { alert('❌ Failed to update: ' + (result.error || 'Unknown error')); }
                 setProcessing(false);
