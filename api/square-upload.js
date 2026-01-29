@@ -48,7 +48,15 @@ export default async function handler(req, res) {
       description = description.trim();
 
   if (item.squareId) {
+        let categoryId = null;
+        if (item.artistName && item.type) {
+          const catName = `${item.artistName} - ${item.type}`;
+          const catSearch = await fetch('https://connect.squareup.com/v2/catalog/search', { method: 'POST', headers: { 'Square-Version': '2024-12-18', 'Authorization': `Bearer ${SQUARE_ACCESS_TOKEN}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ object_types: ['CATEGORY'], query: { exact_query: { attribute_name: 'name', attribute_value: catName } } }) });
+          const catData = await catSearch.json();
+          categoryId = catData.objects?.[0]?.id;
+        }
         const updateObject = { type: 'ITEM', id: item.squareId, version: item.version, item_data: { name: item.title, description: description } };
+        if (categoryId) { updateObject.item_data.categories = [{ id: categoryId }]; }
         if (item.variationId && item.price) {
           updateObject.item_data.variations = [{ type: 'ITEM_VARIATION', id: item.variationId, version: item.variationVersion, item_variation_data: { item_id: item.squareId, name: 'Regular', sku: item.sku, pricing_type: 'FIXED_PRICING', price_money: { amount: Math.round(parseFloat(item.price) * 100), currency: 'USD' } } }];
         }
