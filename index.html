@@ -24,7 +24,7 @@
             'jessica.jeffery': { name: 'Jessica Jeffery', type: 'coop', rate: 20, password: 'temp123', active: true },
             'lynn.redmond': { name: 'Lynn Redmond', type: 'coop', rate: 20, password: 'temp123', active: true },
             'victoria.mauldin': { name: 'Victoria Mauldin', type: 'coop', rate: 20, password: 'temp123', active: true },
-            'gabriella.niegelhell': { name: 'Gabriella Niegelhell', type: 'coop', rate: 20, password: 'temp123', active: true },
+            'gabriele.niegelhell': { name: 'Gabriele Niegelhell', type: 'coop', rate: 20, password: 'temp123', active: true },
             'eden.alvernaz': { name: 'Eden Alvernaz', type: 'coop', rate: 20, password: 'temp123', active: true },
             'dennis.chamberlain': { name: 'Dennis Chamberlain', type: 'coop', rate: 20, password: 'temp123', active: true },
             'elizabeth.beier': { name: 'Elizabeth Beier', type: 'coop', rate: 20, password: 'temp123', active: true },
@@ -121,11 +121,11 @@
                 // Calculate title font size: 17pt default, scale down for longer titles, min 14pt
                 const titleLength = item.title?.length || 0;
                 let titleFontSize = 17;
-                if (titleLength > 25) {
-                    // Scale down: lose ~0.5pt per character over 25, but never below 14pt
-                    titleFontSize = Math.max(14, 17 - ((titleLength - 25) * 0.5));
+                if (titleLength > 27) {
+                    // Scale down: lose ~0.5pt per character over 27, but never below 14pt
+                    titleFontSize = Math.max(14, 17 - ((titleLength - 27) * 0.5));
                 }
-                return `<div class="label" ${index > 0 ? 'style="page-break-before: always;"' : ''}><div class="artist">${item.artistName}</div><div class="title" style="font-size: ${titleFontSize}pt">"${item.title}"</div><div class="medium">${displayMedium}</div><div class="price">$${parseFloat(item.price).toFixed(2)}</div></div>`;
+                return `<div class="label" ${index > 0 ? 'style="page-break-before: always;"' : ''}><div class="artist">${item.artistName}</div><div class="title" style="font-size: ${titleFontSize}pt">${item.title}</div><div class="medium">${displayMedium}</div><div class="price">$${parseFloat(item.price).toFixed(2)}</div></div>`;
             }).join('');
             printWindow.document.write(`<!DOCTYPE html><html><head><title>Wall Labels - DYMO 550 - 30374</title><style>@page { size: 3.5in 2in; margin: 0.375in 0.15in 0.2in 0.28in; } * { margin: 0; padding: 0; box-sizing: border-box; } html, body { font-family: 'Aptos', Calibri, Arial, sans-serif; } @media print { body > *:not(.label) { display: none !important; } } .printer-notice { background: #d1e7dd; border: 3px solid #198754; padding: 15px; text-align: center; font-size: 14pt; font-weight: bold; position: absolute; top: 150px; left: 10px; right: 10px; } .printer-notice .printer-name { color: #d63384; font-size: 18pt; } .label { text-align: center; height: 1.2in; } .artist { font-size: 16pt; font-weight: bold; margin-bottom: 4px; } .title { font-style: italic; margin-bottom: 4px; line-height: 1.1; } .medium { font-size: 14pt; color: #333; margin-bottom: 4px; } .price { font-size: 16pt; font-weight: bold; }</style></head><body>${labelsHTML}<div class="printer-notice">⚠️ SELECT PRINTER: <span class="printer-name">DYMO 550</span> (not Turbo!)<br>Label: 30374 Landscape</div><script>window.onload=function(){setTimeout(function(){window.print();},500);}<\/script></body></html>`);
             printWindow.document.close();
@@ -484,7 +484,7 @@
                         <form onSubmit={editingItem ? handleEditItem : handleAddNew} className="space-y-4">
                             {isAdmin(currentUser) && !editingItem && (<div><label className="block text-sm font-medium mb-1">Artist *</label><select value={formData.artistName} onChange={(e) => setFormData({...formData, artistName: e.target.value})} className="w-full px-4 py-2 border rounded-lg" required><option value="">Select Artist...</option>{activeArtists.map(([username, artist]) => (<option key={username} value={artist.name}>{artist.name}</option>))}</select></div>)}
                             {editingItem && (<div className="bg-gray-50 p-3 rounded-lg"><span className="text-sm text-gray-600">Artist: </span><span className="font-medium">{editingItem.artistName}</span></div>)}
-                            <div><label className="block text-sm font-medium mb-1">Title * <span className="text-gray-500 font-normal">(max 31 chars, font shrinks after 25)</span></label><input type="text" value={formData.title} onChange={(e) => setFormData({...formData, title: e.target.value})} className="w-full px-4 py-2 border rounded-lg" required maxLength={31} /><div className="text-xs text-gray-500 mt-1">{formData.title.length}/31{formData.title.length > 25 && <span className="text-yellow-600 ml-2">Font will be smaller on wall label</span>}</div></div>
+                            <div><label className="block text-sm font-medium mb-1">Title * <span className="text-gray-500 font-normal">(max 33 chars, font shrinks after 27)</span></label><input type="text" value={formData.title} onChange={(e) => setFormData({...formData, title: e.target.value})} className="w-full px-4 py-2 border rounded-lg" required maxLength={33} /><div className="text-xs text-gray-500 mt-1">{formData.title.length}/33{formData.title.length > 27 && <span className="text-yellow-600 ml-2">Font will be smaller on wall label</span>}</div></div>
                             <div><label className="block text-sm font-medium mb-1">Type *</label><select value={formData.type} onChange={(e) => setFormData({...formData, type: e.target.value})} className="w-full px-4 py-2 border rounded-lg" required><option value="">Select...</option>{ARTWORK_TYPES.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
                             <div><label className="block text-sm font-medium mb-1">Medium * <span className="text-gray-500 font-normal">(max 30 chars)</span></label><input type="text" value={formData.medium} onChange={(e) => setFormData({...formData, medium: e.target.value})} className="w-full px-4 py-2 border rounded-lg" placeholder="e.g., Oil on Canvas" required maxLength={30} /></div>
                             <div><label className="block text-sm font-medium mb-1">Description</label><textarea value={formData.description} onChange={(e) => setFormData({...formData, description: e.target.value})} className="w-full px-4 py-2 border rounded-lg" rows="2" /></div>
