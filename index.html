@@ -109,14 +109,20 @@
         
         const printWallLabels = (items) => {
             const printWindow = window.open('', '_blank');
-            const labelsHTML = items.map((item, index) => `<div class="label" ${index > 0 ? 'style="page-break-before: always;"' : ''}><div class="artist">${item.artistName}</div><div class="title">"${item.title}"</div><div class="medium">${item.medium}</div><div class="price">$${parseFloat(item.price).toFixed(2)}</div></div>`).join('');
+            const labelsHTML = items.map((item, index) => {
+                // Use medium if available, otherwise fall back to type
+                const displayMedium = item.medium || item.type || '';
+                return `<div class="label" ${index > 0 ? 'style="page-break-before: always;"' : ''}><div class="artist">${item.artistName}</div><div class="title">"${item.title}"</div><div class="medium">${displayMedium}</div><div class="price">$${parseFloat(item.price).toFixed(2)}</div></div>`;
+            }).join('');
             printWindow.document.write(`<!DOCTYPE html><html><head><title>Wall Labels - DYMO 550 - 30374</title><style>@page { size: 3.5in 2in; margin: 0.375in 0.15in 0.2in 0.28in; } * { margin: 0; padding: 0; box-sizing: border-box; } html, body { font-family: 'Aptos', Calibri, Arial, sans-serif; } @media print { body > *:not(.label) { display: none !important; } } .printer-notice { background: #d1e7dd; border: 3px solid #198754; padding: 15px; text-align: center; font-size: 14pt; font-weight: bold; position: absolute; top: 150px; left: 10px; right: 10px; } .printer-notice .printer-name { color: #d63384; font-size: 18pt; } .label { text-align: center; height: 1.2in; } .artist { font-size: 16pt; font-weight: bold; margin-bottom: 4px; } .title { font-size: 17pt; font-style: italic; margin-bottom: 4px; line-height: 1.1; } .medium { font-size: 14pt; color: #333; margin-bottom: 4px; } .price { font-size: 16pt; font-weight: bold; }</style></head><body>${labelsHTML}<div class="printer-notice">⚠️ SELECT PRINTER: <span class="printer-name">DYMO 550</span> (not Turbo!)<br>Label: 30374 Landscape</div><script>window.onload=function(){setTimeout(function(){window.print();},500);}<\/script></body></html>`);
             printWindow.document.close();
         };
         
         const isAdmin = (user) => user && (user.type === 'admin' || user.type === 'subadmin');
         const isMainAdmin = (user) => user && user.type === 'admin';
-        const isSubAdmin = (user) => user && user.type === 'subadmin';function InventoryPortal() {
+        const isSubAdmin = (user) => user && user.type === 'subadmin';
+
+        function InventoryPortal() {
             const [currentUser, setCurrentUser] = useState(null);
             const [loginForm, setLoginForm] = useState({ username: '', password: '', showPassword: false });
             const [loginError, setLoginError] = useState('');
@@ -303,7 +309,9 @@
             const activeArtists = useMemo(() => { return Object.entries(artistsDb).filter(([u, a]) => !['admin', 'subadmin'].includes(a.type) && a.active).sort(([,a], [,b]) => a.name.localeCompare(b.name)); }, [artistsDb]);
 
             const toggleSelect = (id) => { const newSet = new Set(selectedItems); if (newSet.has(id)) newSet.delete(id); else newSet.add(id); setSelectedItems(newSet); };
-            const selectAll = () => { if (selectedItems.size === filteredInventory.length) setSelectedItems(new Set()); else setSelectedItems(new Set(filteredInventory.map(i => i.squareId || i.id))); };if (loading) {
+            const selectAll = () => { if (selectedItems.size === filteredInventory.length) setSelectedItems(new Set()); else setSelectedItems(new Set(filteredInventory.map(i => i.squareId || i.id))); };
+
+            if (loading) {
                 return (<div className="min-h-screen bg-gradient-to-br from-amber-50 to-orange-100 flex items-center justify-center"><div className="text-center"><div className="text-4xl mb-4">🎨</div><div className="text-xl text-gray-600">Loading Gallery Portal...</div></div></div>);
             }
 
@@ -439,7 +447,27 @@
                                     <table className="w-full">
                                         <thead className="bg-gray-50"><tr><th className="px-4 py-3 text-left"><input type="checkbox" onChange={selectAll} checked={selectedItems.size === filteredInventory.length && filteredInventory.length > 0} /></th><th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Title</th>{isAdmin(currentUser) && <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Artist</th>}<th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th><th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Price</th><th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">SKU</th><th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th></tr></thead>
                                         <tbody className="divide-y divide-gray-200">
-                                            {filteredInventory.map(item => (<tr key={item.squareId || item.id} className="hover:bg-gray-50"><td className="px-4 py-3"><input type="checkbox" checked={selectedItems.has(item.squareId || item.id)} onChange={() => toggleSelect(item.squareId || item.id)} /></td><td className="px-4 py-3 font-medium">{item.title}</td>{isAdmin(currentUser) && <td className="px-4 py-3 text-gray-600">{item.artistName}</td>}<td className="px-4 py-3 text-gray-600">{item.type}</td><td className="px-4 py-3 text-gray-600">${parseFloat(item.price).toFixed(2)}</td><td className="px-4 py-3 text-gray-500 text-sm font-mono">{item.sku?.slice(-8)}</td><td className="px-4 py-3"><div className="flex gap-2"><button onClick={() => startEdit(item)} className="px-3 py-1 bg-blue-100 hover:bg-blue-200 text-blue-700 text-sm rounded">✏️ Edit</button><button onClick={() => handleArchive(item)} className="px-3 py-1 bg-red-100 hover:bg-red-200 text-red-700 text-sm rounded">📦 Archive</button></div></td></tr>))}
+                                            {filteredInventory.map(item => {
+                                                const hasMissingMedium = !item.medium;
+                                                const hasLongSku = item.sku && item.sku.length > 7;
+                                                return (
+                                                    <tr key={item.squareId || item.id} className="hover:bg-gray-50">
+                                                        <td className="px-4 py-3"><input type="checkbox" checked={selectedItems.has(item.squareId || item.id)} onChange={() => toggleSelect(item.squareId || item.id)} /></td>
+                                                        <td className="px-4 py-3 font-medium">
+                                                            {item.title}
+                                                            {hasMissingMedium && <span className="ml-2 px-1.5 py-0.5 bg-yellow-100 text-yellow-700 text-xs rounded" title="Missing medium - will use Type on wall label">⚠️ no medium</span>}
+                                                        </td>
+                                                        {isAdmin(currentUser) && <td className="px-4 py-3 text-gray-600">{item.artistName}</td>}
+                                                        <td className="px-4 py-3 text-gray-600">{item.type}</td>
+                                                        <td className="px-4 py-3 text-gray-600">${parseFloat(item.price).toFixed(2)}</td>
+                                                        <td className="px-4 py-3 text-gray-500 text-sm font-mono">
+                                                            {item.sku?.slice(-8)}
+                                                            {hasLongSku && <span className="ml-1 px-1.5 py-0.5 bg-orange-100 text-orange-700 text-xs rounded" title="SKU longer than 7 characters">📏</span>}
+                                                        </td>
+                                                        <td className="px-4 py-3"><div className="flex gap-2"><button onClick={() => startEdit(item)} className="px-3 py-1 bg-blue-100 hover:bg-blue-200 text-blue-700 text-sm rounded">✏️ Edit</button><button onClick={() => handleArchive(item)} className="px-3 py-1 bg-red-100 hover:bg-red-200 text-red-700 text-sm rounded">📦 Archive</button></div></td>
+                                                    </tr>
+                                                );
+                                            })}
                                         </tbody>
                                     </table>
                                     {filteredInventory.length === 0 && <div className="p-8 text-center text-gray-500">{loadingInventory ? '⏳ Loading...' : '📭 No items found'}</div>}
