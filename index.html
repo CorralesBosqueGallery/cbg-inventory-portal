@@ -153,6 +153,8 @@
             const [passwordForm, setPasswordForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
             const [passwordError, setPasswordError] = useState('');
             const [showInfoPopup, setShowInfoPopup] = useState(false);
+            const [showBulkEdit, setShowBulkEdit] = useState(false);
+            const [bulkMedium, setBulkMedium] = useState('');
 
             useEffect(() => {
                 const loadData = async () => {
@@ -306,6 +308,40 @@
 
             const handleEditArtist = async () => { const rate = editArtistForm.type === 'coop' ? 20 : editArtistForm.type === 'consignment' ? 50 : parseInt(editArtistForm.rate); await saveArtists({ ...artistsDb, [editingArtist]: { ...artistsDb[editingArtist], name: editArtistForm.name, type: editArtistForm.type, rate: rate } }); alert('Artist updated!'); setEditingArtist(null); setEditArtistForm({ name: '', type: '', rate: '' }); };
 
+            const handleBulkEditMedium = async () => {
+                if (!bulkMedium.trim()) { alert('Please enter a medium'); return; }
+                const itemsToUpdate = inventory.filter(i => selectedItems.has(i.squareId || i.id));
+                if (itemsToUpdate.length === 0) { alert('No items selected'); return; }
+                
+                setProcessing(true);
+                let successCount = 0;
+                let failCount = 0;
+                
+                for (const item of itemsToUpdate) {
+                    const updatedItem = { 
+                        ...item, 
+                        medium: bulkMedium.trim(),
+                        version: item.version, 
+                        variationVersion: item.variationVersion 
+                    };
+                    const result = await uploadToSquare([updatedItem]);
+                    if (result.success) { successCount++; } 
+                    else { failCount++; console.error('Failed to update:', item.title, result.error); }
+                }
+                
+                setProcessing(false);
+                setShowBulkEdit(false);
+                setBulkMedium('');
+                setSelectedItems(new Set());
+                
+                if (failCount === 0) {
+                    alert(`✅ Successfully updated medium for ${successCount} item(s)!`);
+                } else {
+                    alert(`Updated ${successCount} item(s).\n${failCount} item(s) failed - check console for details.`);
+                }
+                loadInventory();
+            };
+
             const filteredInventory = useMemo(() => { 
                 let items = inventory;
                 if (searchQuery.trim()) { 
@@ -455,6 +491,34 @@
                 </div>
             );
 
+            const bulkEditModal = showBulkEdit && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md">
+                        <h3 className="text-xl font-bold mb-4">✏️ Bulk Edit Medium</h3>
+                        <p className="text-gray-600 mb-4">Set the medium for <strong>{selectedItems.size} selected item(s)</strong>:</p>
+                        <div className="mb-4">
+                            <ul className="text-sm text-gray-500 max-h-32 overflow-y-auto bg-gray-50 rounded p-2">
+                                {inventory.filter(i => selectedItems.has(i.squareId || i.id)).map(item => (
+                                    <li key={item.squareId || item.id}>• {item.title} {!item.medium && <span className="text-yellow-600">(no medium)</span>}</li>
+                                ))}
+                            </ul>
+                        </div>
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium mb-1">Medium *</label>
+                                <input type="text" value={bulkMedium} onChange={(e) => setBulkMedium(e.target.value)} className="w-full px-4 py-2 border rounded-lg" placeholder="e.g., Oil on Canvas, Acrylic, Ceramic" />
+                            </div>
+                            <div className="flex gap-3">
+                                <button onClick={handleBulkEditMedium} disabled={processing || !bulkMedium.trim()} className="flex-1 bg-orange-600 hover:bg-orange-700 disabled:bg-gray-400 text-white font-semibold py-2 rounded-lg">
+                                    {processing ? '⏳ Updating...' : `Update ${selectedItems.size} Item(s)`}
+                                </button>
+                                <button onClick={() => {setShowBulkEdit(false); setBulkMedium('');}} disabled={processing} className="flex-1 bg-gray-200 hover:bg-gray-300 disabled:bg-gray-100 py-2 rounded-lg">Cancel</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+
             return (
                 <div className="min-h-screen bg-gray-50">
                     {passwordModal}
@@ -462,6 +526,7 @@
                     {itemModal}
                     {addArtistModal}
                     {editArtistModal}
+                    {bulkEditModal}
                     
                     <div className="bg-white shadow-sm border-b">
                         <div className="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
@@ -484,7 +549,7 @@
                                     <div className="flex flex-wrap gap-4 items-center justify-between">
                                         <div className="flex gap-3"><button onClick={() => setShowAddForm(true)} className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg flex items-center gap-2">➕ Add New</button><button onClick={loadInventory} disabled={loadingInventory} className="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg flex items-center gap-2">{loadingInventory ? '⏳' : '🔄'} Refresh</button></div>
                                         <div className="flex-1 max-w-md"><input type="text" placeholder="🔍 Search..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full px-4 py-2 border rounded-lg" /></div>
-                                        <div className="flex gap-2"><button onClick={() => handlePrintSelected('sku')} className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg">🏷️ SKU Labels</button><button onClick={() => handlePrintSelected('wall')} className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg">🖼️ Wall Labels</button></div>
+                                        <div className="flex gap-2">{isAdmin(currentUser) && selectedItems.size > 0 && <button onClick={() => setShowBulkEdit(true)} className="px-4 py-2 bg-yellow-500 hover:bg-yellow-600 text-white rounded-lg">✏️ Bulk Edit Medium</button>}<button onClick={() => handlePrintSelected('sku')} className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg">🏷️ SKU Labels</button><button onClick={() => handlePrintSelected('wall')} className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg">🖼️ Wall Labels</button></div>
                                     </div>
                                 </div>
                                 <div className="bg-white rounded-lg shadow overflow-hidden">
