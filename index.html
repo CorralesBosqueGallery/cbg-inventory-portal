@@ -98,6 +98,7 @@
         };
 
         const printSKULabels = (items) => {
+            alert('🖨️ PRINTER INSTRUCTIONS\n\nSelect printer: DYMO 550 TURBO\nLabel: 30336 (2.125" x 1")\nOrientation: Landscape\n\nClick OK to continue to print preview.');
             const printWindow = window.open('', '_blank');
             const labelsHTML = items.map((item, index) => {
                 const sku = item.sku || item.squareId || 'SKU-' + item.id;
@@ -108,6 +109,7 @@
         };
         
         const printWallLabels = (items) => {
+            alert('🖨️ PRINTER INSTRUCTIONS\n\nSelect printer: DYMO 550 (not Turbo!)\nLabel: 30374 "Appointment Card" (2.125" x 3.5")\nOrientation: Landscape\n\nClick OK to continue to print preview.');
             const printWindow = window.open('', '_blank');
             const labelsHTML = items.map((item, index) => {
                 // Use medium if available, otherwise fall back to type
@@ -234,7 +236,7 @@
                 setProcessing(true);
                 const artistName = isAdmin(currentUser) ? formData.artistName : currentUser.name;
                 if (!artistName) { alert('Please select an artist'); setProcessing(false); return; }
-                const newItem = { id: Date.now(), artistName: artistName, title: formData.title, type: formData.type, medium: formData.medium, description: formData.description, height: formData.height, width: formData.width, price: formData.price, dimensions: `${formData.height}" x ${formData.width}"` };
+                const newItem = { id: Date.now(), artistName: artistName, title: formData.title, type: formData.type, medium: formData.medium, description: formData.description, height: formData.height, width: formData.width, price: formData.price, quantity: parseInt(formData.quantity) || 1, dimensions: `${formData.height}" x ${formData.width}"` };
                 const result = await uploadToSquare([newItem]);
                 if (result.success) { alert('✅ Item added to Square successfully!'); setFormData({ title: '', type: '', medium: '', description: '', height: '', width: '', price: '', quantity: '1', artistName: '' }); setShowAddForm(false); loadInventory(); }
                 else { alert('❌ Failed to add item: ' + (result.error || 'Unknown error')); }
@@ -304,7 +306,15 @@
 
             const handleEditArtist = async () => { const rate = editArtistForm.type === 'coop' ? 20 : editArtistForm.type === 'consignment' ? 50 : parseInt(editArtistForm.rate); await saveArtists({ ...artistsDb, [editingArtist]: { ...artistsDb[editingArtist], name: editArtistForm.name, type: editArtistForm.type, rate: rate } }); alert('Artist updated!'); setEditingArtist(null); setEditArtistForm({ name: '', type: '', rate: '' }); };
 
-            const filteredInventory = useMemo(() => { if (!searchQuery.trim()) return inventory; const q = searchQuery.toLowerCase(); return inventory.filter(item => item.title?.toLowerCase().includes(q) || item.artistName?.toLowerCase().includes(q) || item.type?.toLowerCase().includes(q) || item.medium?.toLowerCase().includes(q) || item.sku?.toLowerCase().includes(q)); }, [inventory, searchQuery]);
+            const filteredInventory = useMemo(() => { 
+                let items = inventory;
+                if (searchQuery.trim()) { 
+                    const q = searchQuery.toLowerCase(); 
+                    items = items.filter(item => item.title?.toLowerCase().includes(q) || item.artistName?.toLowerCase().includes(q) || item.type?.toLowerCase().includes(q) || item.medium?.toLowerCase().includes(q) || item.sku?.toLowerCase().includes(q)); 
+                }
+                // Sort newest first by createdAt
+                return items.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+            }, [inventory, searchQuery]);
 
             const filteredArchive = useMemo(() => { if (!archiveSearch.trim()) return archive; const q = archiveSearch.toLowerCase(); return archive.filter(item => item.title?.toLowerCase().includes(q) || item.artistName?.toLowerCase().includes(q) || item.type?.toLowerCase().includes(q) || item.sku?.toLowerCase().includes(q)); }, [archive, archiveSearch]);
 
@@ -410,6 +420,7 @@
                             <div><label className="block text-sm font-medium mb-1">Description</label><textarea value={formData.description} onChange={(e) => setFormData({...formData, description: e.target.value})} className="w-full px-4 py-2 border rounded-lg" rows="2" /></div>
                             <div className="grid grid-cols-2 gap-4"><div><label className="block text-sm font-medium mb-1">Height (inches) *</label><input type="number" step="0.1" value={formData.height} onChange={(e) => setFormData({...formData, height: e.target.value})} className="w-full px-4 py-2 border rounded-lg" required /></div><div><label className="block text-sm font-medium mb-1">Width (inches) *</label><input type="number" step="0.1" value={formData.width} onChange={(e) => setFormData({...formData, width: e.target.value})} className="w-full px-4 py-2 border rounded-lg" required /></div></div>
                             <div><label className="block text-sm font-medium mb-1">Price ($) *</label><input type="number" step="0.01" value={formData.price} onChange={(e) => setFormData({...formData, price: e.target.value})} className="w-full px-4 py-2 border rounded-lg" required /></div>
+                            {!editingItem && (<div><label className="block text-sm font-medium mb-1">Quantity</label><input type="number" min="1" value={formData.quantity} onChange={(e) => setFormData({...formData, quantity: e.target.value})} className="w-full px-4 py-2 border rounded-lg" /><p className="text-xs text-gray-500 mt-1">Default is 1. For items like cards or prints, you can set a higher quantity.</p></div>)}
                             <div className="flex gap-3 pt-4"><button type="submit" disabled={processing} className="flex-1 bg-orange-600 hover:bg-orange-700 disabled:bg-gray-400 text-white font-semibold py-2 rounded-lg">{processing ? '⏳ Processing...' : editingItem ? '💾 Update in Square' : '➕ Add to Square'}</button><button type="button" onClick={() => {setShowAddForm(false); setEditingItem(null); setFormData({title:'',type:'',medium:'',description:'',height:'',width:'',price:'',quantity:'1',artistName:''});}} className="flex-1 bg-gray-200 hover:bg-gray-300 py-2 rounded-lg">Cancel</button></div>
                         </form>
                     </div>
