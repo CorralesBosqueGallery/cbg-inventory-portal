@@ -1,5 +1,5 @@
 // API endpoint to fetch inventory from Square
-// GET: Fetch all catalog items
+// GET: Fetch all catalog items with inventory counts
 // Filters by artist name in category if artistName query param provided
 // Category format expected: "Artist Name - Type"
 
@@ -78,11 +78,50 @@ export default async function handler(req, res) {
       catCursor = catData.cursor;
     } while (catCursor);
 
+    // Collect all variation IDs to fetch inventory counts
+    const variationIds = allItems
+      .map(item => item.item_data?.variations?.[0]?.id)
+      .filter(id => id);
+
+    // Fetch inventory counts for all variations
+    let inventoryCounts = {};
+    if (variationIds.length > 0) {
+      // Square API allows up to 100 catalog object IDs per request
+      const batchSize = 100;
+      for (let i = 0; i < variationIds.length; i += batchSize) {
+        const batch = variationIds.slice(i, i + batchSize);
+        
+        const invResponse = await fetch('https://connect.squareup.com/v2/inventory/counts/batch-retrieve', {
+          method: 'POST',
+          headers: {
+            'Square-Version': '2024-12-18',
+            'Authorization': `Bearer ${SQUARE_ACCESS_TOKEN}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            catalog_object_ids: batch,
+            location_ids: [SQUARE_LOCATION_ID]
+          })
+        });
+
+        const invData = await invResponse.json();
+        
+        if (invResponse.ok && invData.counts) {
+          invData.counts.forEach(count => {
+            if (count.state === 'IN_STOCK') {
+              inventoryCounts[count.catalog_object_id] = parseInt(count.quantity) || 0;
+            }
+          });
+        }
+      }
+    }
+
     // Transform Square items to our format
     const items = allItems.map(item => {
       const itemData = item.item_data || {};
       const variation = itemData.variations?.[0];
       const variationData = variation?.item_variation_data || {};
+      const variationId = variation?.id;
       
       // Get category name - check multiple possible locations
       let categoryName = '';
@@ -141,10 +180,13 @@ export default async function handler(req, res) {
         width = hwMatch[2];
       }
 
+      // Get inventory quantity for this variation
+      const quantity = variationId ? (inventoryCounts[variationId] || 0) : 0;
+
       return {
         id: item.id,
         squareId: item.id,
-        variationId: variation?.id || null,
+        variationId: variationId || null,
         version: item.version,
         variationVersion: variation?.version || null,
         title: itemData.name || 'Untitled',
@@ -158,6 +200,7 @@ export default async function handler(req, res) {
         width: width,
         price: variationData.price_money ? (variationData.price_money.amount / 100).toFixed(2) : '0.00',
         sku: variationData.sku || item.id,
+        quantity: quantity,
         status: 'live',
         updatedAt: item.updated_at,
         createdAt: item.created_at
