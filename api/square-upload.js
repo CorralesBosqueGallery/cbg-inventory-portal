@@ -47,10 +47,10 @@ export default async function handler(req, res) {
       if (item.discounts) description += `\nDiscounts: ${item.discounts}`;
       description = description.trim();
 
-    if (item.squareId) {
+  if (item.squareId) {
         const updateObject = { type: 'ITEM', id: item.squareId, version: item.version, item_data: { name: item.title, description: description } };
         if (item.variationId && item.price) {
-          updateObject.item_data.variations = [{ type: 'ITEM_VARIATION', id: item.variationId, version: item.variationVersion, item_variation_data: { item_id: item.squareId, name: 'Regular', pricing_type: 'FIXED_PRICING', price_money: { amount: Math.round(parseFloat(item.price) * 100), currency: 'USD' } } }];
+          updateObject.item_data.variations = [{ type: 'ITEM_VARIATION', id: item.variationId, version: item.variationVersion, item_variation_data: { item_id: item.squareId, name: 'Regular', sku: item.sku, pricing_type: 'FIXED_PRICING', price_money: { amount: Math.round(parseFloat(item.price) * 100), currency: 'USD' } } }];
         }
         console.log('Attempting update with:', JSON.stringify({ squareId: item.squareId, version: item.version, variationVersion: item.variationVersion }));
         const response = await fetch('https://connect.squareup.com/v2/catalog/object', { method: 'POST', headers: { 'Square-Version': '2024-12-18', 'Authorization': `Bearer ${SQUARE_ACCESS_TOKEN}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ idempotency_key: `update-${item.squareId}-${Date.now()}`, object: updateObject }) });
