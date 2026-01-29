@@ -150,6 +150,7 @@
             const [showPasswordChange, setShowPasswordChange] = useState(false);
             const [passwordForm, setPasswordForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
             const [passwordError, setPasswordError] = useState('');
+            const [showInfoPopup, setShowInfoPopup] = useState(false);
 
             useEffect(() => {
                 const loadData = async () => {
@@ -194,6 +195,7 @@
                     setLoginError('');
                     setLoginForm({ username: '', password: '', showPassword: false });
                     if (artist.type === 'subadmin' && artist.needsSetup) setShowSetup(true);
+                    else if (artist.type === 'admin' || artist.type === 'subadmin') setShowInfoPopup(true);
                 } else { setLoginError('Invalid username or password'); }
             };
 
@@ -365,6 +367,36 @@
                 </div>
             );
 
+            const infoPopup = showInfoPopup && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-lg">
+                        <h3 className="text-xl font-bold mb-4 text-gray-800">📋 Inventory Item Alerts</h3>
+                        <p className="text-gray-600 mb-4">Some items in the inventory may need your attention. Look for these indicators:</p>
+                        
+                        <div className="space-y-4 mb-6">
+                            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                                <div className="flex items-center gap-2 mb-2">
+                                    <span className="px-1.5 py-0.5 bg-yellow-100 text-yellow-700 text-xs rounded">⚠️ no medium</span>
+                                    <span className="font-semibold text-yellow-800">Missing Medium</span>
+                                </div>
+                                <p className="text-sm text-yellow-900">This item is missing the "medium" field (e.g., "Oil on Canvas"). <strong>Edit the item</strong> and add the medium so it appears correctly on wall labels.</p>
+                            </div>
+                            
+                            <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+                                <div className="flex items-center gap-2 mb-2">
+                                    <span className="font-mono text-gray-500 text-sm">N5BHY03A</span>
+                                    <span className="px-1.5 py-0.5 bg-orange-100 text-orange-700 text-xs rounded">📏</span>
+                                    <span className="font-semibold text-orange-800">Long SKU</span>
+                                </div>
+                                <p className="text-sm text-orange-900">This item has an old-format SKU that's too long for barcode labels. <strong>Archive the item</strong>, then <strong>restore it from archive</strong> to generate a new short SKU.</p>
+                            </div>
+                        </div>
+                        
+                        <button onClick={() => setShowInfoPopup(false)} className="w-full bg-orange-600 hover:bg-orange-700 text-white font-semibold py-3 rounded-lg">Got It!</button>
+                    </div>
+                </div>
+            );
+
             const itemModal = (showAddForm || editingItem) && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
                     <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
@@ -415,6 +447,7 @@
             return (
                 <div className="min-h-screen bg-gray-50">
                     {passwordModal}
+                    {infoPopup}
                     {itemModal}
                     {addArtistModal}
                     {editArtistModal}
