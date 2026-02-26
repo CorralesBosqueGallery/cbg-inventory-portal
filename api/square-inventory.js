@@ -164,9 +164,6 @@ export default async function handler(req, res) {
           .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"')
           .trim();
       }
-      if (item.id === allItems[0]?.id) {
-        console.log('DESC FIELDS for first item:', JSON.stringify({ description: itemData.description, description_plaintext: itemData.description_plaintext, description_html: itemData.description_html }));
-      }
       const description = rawDescription;
       let medium = '';
       let dimensions = '';

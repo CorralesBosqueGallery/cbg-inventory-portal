@@ -106,7 +106,6 @@ export default async function handler(req, res) {
 
         // Preserve existing Square data as fallbacks to prevent data loss on partial edits
         const existingDesc = latestData.object?.item_data?.description || latestData.object?.item_data?.description_plaintext || '';
-        console.log('item.medium from frontend:', item.medium, '| existingDesc snippet:', existingDesc.substring(0, 100));
         const existingMediumMatch = existingDesc.match(/Medium:[^\S\n]*([^\n]+)/i);
         const effectiveMedium = item.medium || (existingMediumMatch ? existingMediumMatch[1].trim() : '');
         const existingCategories = latestData.object?.item_data?.categories || [];
@@ -119,7 +118,6 @@ export default async function handler(req, res) {
         if (item.discounts) updatedLines.push(`Discounts: ${item.discounts}`);
         if (updatedLines.length > 0) updatedDescription += '\n\n' + updatedLines.join('\n');
         description = updatedDescription.trim();
-        console.log('effectiveMedium:', effectiveMedium, '| final description:', description.substring(0, 150));
 
         const updateObject = { type: 'ITEM', id: item.squareId, version: latestVersion, item_data: { name: item.title, description: description, description_html: descriptionHtml } };
         // Always include categories — use newly found/created one, or fall back to existing Square categories
@@ -130,13 +128,6 @@ export default async function handler(req, res) {
         console.log('Attempting update with latest version:', JSON.stringify({ squareId: item.squareId, latestVersion, latestVariationVersion }));
         const response = await fetch('https://connect.squareup.com/v2/catalog/object', { method: 'POST', headers: { 'Square-Version': '2024-12-18', 'Authorization': `Bearer ${SQUARE_ACCESS_TOKEN}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ idempotency_key: `update-${item.squareId}-${Date.now()}`, object: updateObject }) });
         const data = await response.json();
-        console.log('Square update response description:', data.catalog_object?.item_data?.description ?? '(not in response)');
-        // Verify what Square actually stored by re-fetching the item
-        if (response.ok) {
-          const verifyFetch = await fetch(`https://connect.squareup.com/v2/catalog/object/${item.squareId}`, { method: 'GET', headers: { 'Square-Version': '2024-12-18', 'Authorization': `Bearer ${SQUARE_ACCESS_TOKEN}` } });
-          const verifyData = await verifyFetch.json();
-          console.log('Verified stored description:', verifyData.object?.item_data?.description?.substring(0, 200) ?? '(empty or missing)');
-        }
         if (!response.ok) {
           console.error('Square update failed:', data.errors);
           results.push({ originalId: item.id, squareId: item.squareId, success: false, error: data.errors?.[0]?.detail || 'Failed to update' }); 
