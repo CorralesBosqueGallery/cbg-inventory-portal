@@ -166,10 +166,16 @@
             const [showInfoPopup, setShowInfoPopup] = useState(false);
             const [showBulkEdit, setShowBulkEdit] = useState(false);
             const [bulkMedium, setBulkMedium] = useState('');
+            const [artworkTypes, setArtworkTypes] = useState(ARTWORK_TYPES);
+            const [newCategoryName, setNewCategoryName] = useState('');
 
             useEffect(() => {
                 const loadData = async () => {
-                    const [savedArtists, savedArchive] = await Promise.all([kvGet('cbg-artists'), kvGet('cbg-archive')]);
+                    const [savedArtists, savedArchive, savedCategories] = await Promise.all([
+                        kvGet('cbg-artists'),
+                        kvGet('cbg-archive'),
+                        kvGet('cbg-categories')
+                    ]);
                     let artists = INITIAL_ARTISTS;
                     let needsSave = false;
                     if (savedArtists && typeof savedArtists === 'object') {
@@ -181,6 +187,9 @@
                     }
                     setArtistsDb(artists);
                     if (Array.isArray(savedArchive)) setArchive(savedArchive);
+                    if (Array.isArray(savedCategories) && savedCategories.length > 0) {
+                        setArtworkTypes(savedCategories);
+                    }
                     setLoading(false);
                 };
                 loadData();
@@ -200,6 +209,18 @@
 
             const saveArtists = async (newArtists) => { setArtistsDb(newArtists); await kvSet('cbg-artists', newArtists); };
             const saveArchive = async (newArchive) => { setArchive(newArchive); await kvSet('cbg-archive', newArchive); };
+            const saveArtworkTypes = async (types) => { setArtworkTypes(types); await kvSet('cbg-categories', types); };
+
+            const handleAddCategory = async () => {
+                const trimmed = newCategoryName.trim();
+                if (!trimmed) return;
+                if (artworkTypes.map(t => t.toLowerCase()).includes(trimmed.toLowerCase())) {
+                    alert('That type already exists.');
+                    return;
+                }
+                await saveArtworkTypes([...artworkTypes, trimmed].sort());
+                setNewCategoryName('');
+            };
 
             const handleLogin = (e) => {
                 e.preventDefault();
@@ -485,7 +506,7 @@
                             {isAdmin(currentUser) && !editingItem && (<div><label className="block text-sm font-medium mb-1">Artist *</label><select value={formData.artistName} onChange={(e) => setFormData({...formData, artistName: e.target.value})} className="w-full px-4 py-2 border rounded-lg" required><option value="">Select Artist...</option>{activeArtists.map(([username, artist]) => (<option key={username} value={artist.name}>{artist.name}</option>))}</select></div>)}
                             {editingItem && (<div className="bg-gray-50 p-3 rounded-lg"><span className="text-sm text-gray-600">Artist: </span><span className="font-medium">{editingItem.artistName}</span></div>)}
                             <div><label className="block text-sm font-medium mb-1">Title * <span className="text-gray-500 font-normal">(max 33 chars, font shrinks after 27)</span></label><input type="text" value={formData.title} onChange={(e) => setFormData({...formData, title: e.target.value})} className="w-full px-4 py-2 border rounded-lg" required maxLength={33} /><div className="text-xs text-gray-500 mt-1">{formData.title.length}/33{formData.title.length > 27 && <span className="text-yellow-600 ml-2">Font will be smaller on wall label</span>}</div></div>
-                            <div><label className="block text-sm font-medium mb-1">Type *</label><select value={formData.type} onChange={(e) => setFormData({...formData, type: e.target.value})} className="w-full px-4 py-2 border rounded-lg" required><option value="">Select...</option>{ARTWORK_TYPES.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
+                            <div><label className="block text-sm font-medium mb-1">Type *</label><select value={formData.type} onChange={(e) => setFormData({...formData, type: e.target.value})} className="w-full px-4 py-2 border rounded-lg" required><option value="">Select...</option>{artworkTypes.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
                             <div><label className="block text-sm font-medium mb-1">Medium * <span className="text-gray-500 font-normal">(max 30 chars)</span></label><input type="text" value={formData.medium} onChange={(e) => setFormData({...formData, medium: e.target.value})} className="w-full px-4 py-2 border rounded-lg" placeholder="e.g., Oil on Canvas" required maxLength={30} /></div>
                             <div><label className="block text-sm font-medium mb-1">Description</label><textarea value={formData.description} onChange={(e) => setFormData({...formData, description: e.target.value})} className="w-full px-4 py-2 border rounded-lg" rows="2" /></div>
                             <div className="grid grid-cols-2 gap-4"><div><label className="block text-sm font-medium mb-1">Height (inches) *</label><input type="number" step="0.1" value={formData.height} onChange={(e) => setFormData({...formData, height: e.target.value})} className="w-full px-4 py-2 border rounded-lg" required /></div><div><label className="block text-sm font-medium mb-1">Width (inches) *</label><input type="number" step="0.1" value={formData.width} onChange={(e) => setFormData({...formData, width: e.target.value})} className="w-full px-4 py-2 border rounded-lg" required /></div></div>
@@ -572,7 +593,7 @@
                     <div className="bg-white border-b">
                         <div className="max-w-7xl mx-auto px-4 flex">
                             <button onClick={() => setActiveTab('inventory')} className={`px-6 py-3 font-medium ${activeTab === 'inventory' ? 'border-b-2 border-orange-600 text-orange-600' : 'text-gray-600'}`}>📦 {isAdmin(currentUser) ? 'All Inventory' : 'My Inventory'} ({inventory.length})</button>
-                            {isAdmin(currentUser) && (<><button onClick={() => setActiveTab('archive')} className={`px-6 py-3 font-medium ${activeTab === 'archive' ? 'border-b-2 border-orange-600 text-orange-600' : 'text-gray-600'}`}>📁 Archive ({archive.length})</button><button onClick={() => setActiveTab('artists')} className={`px-6 py-3 font-medium ${activeTab === 'artists' ? 'border-b-2 border-orange-600 text-orange-600' : 'text-gray-600'}`}>👥 Artists</button></>)}
+                            {isAdmin(currentUser) && (<><button onClick={() => setActiveTab('archive')} className={`px-6 py-3 font-medium ${activeTab === 'archive' ? 'border-b-2 border-orange-600 text-orange-600' : 'text-gray-600'}`}>📁 Archive ({archive.length})</button><button onClick={() => setActiveTab('artists')} className={`px-6 py-3 font-medium ${activeTab === 'artists' ? 'border-b-2 border-orange-600 text-orange-600' : 'text-gray-600'}`}>👥 Artists</button><button onClick={() => setActiveTab('categories')} className={`px-6 py-3 font-medium ${activeTab === 'categories' ? 'border-b-2 border-orange-600 text-orange-600' : 'text-gray-600'}`}>🗂️ Categories</button></>)}
                         </div>
                     </div>
 
@@ -636,6 +657,44 @@
                                         <tbody className="divide-y divide-gray-200">{filteredArchive.map(item => (<tr key={item.squareId} className="hover:bg-gray-50"><td className="px-4 py-3 font-medium">{item.title}</td><td className="px-4 py-3 text-gray-600">{item.artistName}</td><td className="px-4 py-3 text-gray-500 text-sm">{new Date(item.archivedAt).toLocaleDateString()}</td><td className="px-4 py-3"><button onClick={() => handleRestore(item)} className="px-3 py-1 bg-green-100 hover:bg-green-200 text-green-700 text-sm rounded">♻️ Restore</button></td></tr>))}</tbody>
                                     </table>
                                     {filteredArchive.length === 0 && <div className="p-8 text-center text-gray-500">📭 Archive is empty</div>}
+                                </div>
+                            </div>
+                        )}
+
+                        {activeTab === 'categories' && isAdmin(currentUser) && (
+                            <div>
+                                <div className="bg-white rounded-lg shadow p-4 mb-6">
+                                    <h3 className="text-lg font-bold mb-4 text-gray-700">Add New Category</h3>
+                                    <div className="flex gap-3">
+                                        <input
+                                            type="text"
+                                            placeholder="e.g., Sculpture"
+                                            value={newCategoryName}
+                                            onChange={(e) => setNewCategoryName(e.target.value)}
+                                            onKeyDown={(e) => e.key === 'Enter' && handleAddCategory()}
+                                            className="flex-1 max-w-sm px-4 py-2 border rounded-lg"
+                                        />
+                                        <button
+                                            onClick={handleAddCategory}
+                                            disabled={!newCategoryName.trim()}
+                                            className="px-4 py-2 bg-orange-600 hover:bg-orange-700 disabled:bg-gray-300 text-white rounded-lg">
+                                            ➕ Add Category
+                                        </button>
+                                    </div>
+                                </div>
+                                <div className="bg-white rounded-lg shadow overflow-hidden">
+                                    <table className="w-full">
+                                        <thead className="bg-gray-50">
+                                            <tr><th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Artwork Type</th></tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-gray-200">
+                                            {artworkTypes.map(type => (
+                                                <tr key={type} className="hover:bg-gray-50">
+                                                    <td className="px-6 py-4 font-medium">{type}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
                                 </div>
                             </div>
                         )}
