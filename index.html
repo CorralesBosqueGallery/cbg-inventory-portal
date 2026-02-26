@@ -280,14 +280,23 @@
             const handleEditItem = async (e) => {
                 e.preventDefault();
                 setProcessing(true);
-                const updatedItem = { ...editingItem, artistName: editingItem.artistName, title: formData.title, type: formData.type, medium: formData.medium, description: formData.description, height: formData.height, width: formData.width, price: formData.price, dimensions: `${formData.height}" x ${formData.width}"`, version: editingItem.version, variationVersion: editingItem.variationVersion };
+                const updatedItem = { ...editingItem, artistName: formData.artistName || editingItem.artistName, title: formData.title, type: formData.type, medium: formData.medium || editingItem.medium, description: formData.description, height: formData.height || editingItem.height, width: formData.width || editingItem.width, price: formData.price, dimensions: (formData.height && formData.width) ? `${formData.height}" x ${formData.width}"` : editingItem.dimensions, version: editingItem.version, variationVersion: editingItem.variationVersion };
                 const result = await uploadToSquare([updatedItem]);
                 if (result.success) { alert('✅ Item updated in Square!'); setEditingItem(null); setFormData({ title: '', type: '', medium: '', description: '', height: '', width: '', price: '', quantity: '1', artistName: '' }); loadInventory(); }
                 else { alert('❌ Failed to update: ' + (result.error || 'Unknown error')); }
                 setProcessing(false);
             };
             
-            const startEdit = (item) => { setFormData({ title: item.title || '', type: item.type || '', medium: item.medium || '', description: item.description || '', height: item.height || '', width: item.width || '', price: item.price || '', quantity: '1', artistName: item.artistName || '' }); setEditingItem(item); };
+            const startEdit = (item) => {
+                let height = item.height || '';
+                let width = item.width || '';
+                if (!height && !width && item.dimensions) {
+                    const match = item.dimensions.match(/^([\d.]+)"\s*x\s*([\d.]+)"/);
+                    if (match) { height = match[1]; width = match[2]; }
+                }
+                setFormData({ title: item.title || '', type: item.type || '', medium: item.medium || '', description: item.description || '', height, width, price: item.price || '', quantity: '1', artistName: item.artistName || '' });
+                setEditingItem(item);
+            };
 
             const handleArchive = async (item) => {
                 if (!confirm(`Archive "${item.title}"?\n\nThis will remove it from Square and save it to the archive.`)) return;
@@ -503,8 +512,8 @@
                     <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
                         <h3 className="text-xl font-bold mb-4">{editingItem ? `Edit: ${editingItem.title}` : 'Add New Item'}</h3>
                         <form onSubmit={editingItem ? handleEditItem : handleAddNew} className="space-y-4">
-                            {isAdmin(currentUser) && !editingItem && (<div><label className="block text-sm font-medium mb-1">Artist *</label><select value={formData.artistName} onChange={(e) => setFormData({...formData, artistName: e.target.value})} className="w-full px-4 py-2 border rounded-lg" required><option value="">Select Artist...</option>{activeArtists.map(([username, artist]) => (<option key={username} value={artist.name}>{artist.name}</option>))}</select></div>)}
-                            {editingItem && (<div className="bg-gray-50 p-3 rounded-lg"><span className="text-sm text-gray-600">Artist: </span><span className="font-medium">{editingItem.artistName}</span></div>)}
+                            {isAdmin(currentUser) && (<div><label className="block text-sm font-medium mb-1">Artist *</label><select value={formData.artistName} onChange={(e) => setFormData({...formData, artistName: e.target.value})} className="w-full px-4 py-2 border rounded-lg" required><option value="">Select Artist...</option>{activeArtists.map(([username, artist]) => (<option key={username} value={artist.name}>{artist.name}</option>))}</select></div>)}
+                            {!isAdmin(currentUser) && editingItem && (<div className="bg-gray-50 p-3 rounded-lg"><span className="text-sm text-gray-600">Artist: </span><span className="font-medium">{editingItem.artistName}</span></div>)}
                             <div><label className="block text-sm font-medium mb-1">Title * <span className="text-gray-500 font-normal">(max 33 chars, font shrinks after 27)</span></label><input type="text" value={formData.title} onChange={(e) => setFormData({...formData, title: e.target.value})} className="w-full px-4 py-2 border rounded-lg" required maxLength={33} /><div className="text-xs text-gray-500 mt-1">{formData.title.length}/33{formData.title.length > 27 && <span className="text-yellow-600 ml-2">Font will be smaller on wall label</span>}</div></div>
                             <div><label className="block text-sm font-medium mb-1">Type *</label><select value={formData.type} onChange={(e) => setFormData({...formData, type: e.target.value})} className="w-full px-4 py-2 border rounded-lg" required><option value="">Select...</option>{artworkTypes.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
                             <div><label className="block text-sm font-medium mb-1">Medium * <span className="text-gray-500 font-normal">(max 30 chars)</span></label><input type="text" value={formData.medium} onChange={(e) => setFormData({...formData, medium: e.target.value})} className="w-full px-4 py-2 border rounded-lg" placeholder="e.g., Oil on Canvas" required maxLength={30} /></div>
