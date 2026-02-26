@@ -282,7 +282,7 @@
                 setProcessing(true);
                 const updatedItem = { ...editingItem, artistName: formData.artistName || editingItem.artistName, title: formData.title, type: formData.type, medium: formData.medium || editingItem.medium, description: formData.description, height: formData.height || editingItem.height, width: formData.width || editingItem.width, price: formData.price, dimensions: (formData.height && formData.width) ? `${formData.height}" x ${formData.width}"` : editingItem.dimensions, version: editingItem.version, variationVersion: editingItem.variationVersion };
                 const result = await uploadToSquare([updatedItem]);
-                if (result.success) { alert('✅ Item updated in Square!'); setEditingItem(null); setFormData({ title: '', type: '', medium: '', description: '', height: '', width: '', price: '', quantity: '1', artistName: '' }); loadInventory(); }
+                if (result.success) { alert('✅ Item updated in Square!'); setEditingItem(null); setFormData({ title: '', type: '', medium: '', description: '', height: '', width: '', price: '', quantity: '1', artistName: '' }); setInventory(prev => prev.map(i => i.squareId === editingItem.squareId ? { ...i, ...updatedItem } : i)); loadInventory(); }
                 else { alert('❌ Failed to update: ' + (result.error || 'Unknown error')); }
                 setProcessing(false);
             };

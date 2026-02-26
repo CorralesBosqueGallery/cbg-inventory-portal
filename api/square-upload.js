@@ -102,7 +102,8 @@ export default async function handler(req, res) {
         const latestVariationVersion = latestData.object?.item_data?.variations?.[0]?.version ?? item.variationVersion;
 
         // Preserve existing Square data as fallbacks to prevent data loss on partial edits
-        const existingDesc = latestData.object?.item_data?.description || '';
+        const existingDesc = latestData.object?.item_data?.description || latestData.object?.item_data?.description_plaintext || '';
+        console.log('item.medium from frontend:', item.medium, '| existingDesc snippet:', existingDesc.substring(0, 100));
         const existingMediumMatch = existingDesc.match(/Medium:[^\S\n]*([^\n]+)/i);
         const effectiveMedium = item.medium || (existingMediumMatch ? existingMediumMatch[1].trim() : '');
         const existingCategories = latestData.object?.item_data?.categories || [];
@@ -115,6 +116,7 @@ export default async function handler(req, res) {
         if (item.discounts) updatedLines.push(`Discounts: ${item.discounts}`);
         if (updatedLines.length > 0) updatedDescription += '\n\n' + updatedLines.join('\n');
         description = updatedDescription.trim();
+        console.log('effectiveMedium:', effectiveMedium, '| final description:', description.substring(0, 150));
 
         const updateObject = { type: 'ITEM', id: item.squareId, version: latestVersion, item_data: { name: item.title, description: description } };
         // Always include categories — use newly found/created one, or fall back to existing Square categories

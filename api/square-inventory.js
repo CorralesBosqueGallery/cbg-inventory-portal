@@ -153,7 +153,8 @@ export default async function handler(req, res) {
       }
       
       // Parse dimensions and medium from description
-      const description = itemData.description || '';
+      // Fall back to description_plaintext (used by newer Square API versions)
+      const description = itemData.description || itemData.description_plaintext || '';
       let medium = '';
       let dimensions = '';
       let cleanDescription = description;
