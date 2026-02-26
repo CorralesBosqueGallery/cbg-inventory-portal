@@ -158,19 +158,19 @@ export default async function handler(req, res) {
       let dimensions = '';
       let cleanDescription = description;
       
-      const mediumMatch = description.match(/Medium:\s*([^\n]+)/i);
+      const mediumMatch = description.match(/Medium:[^\S\n]*([^\n]*)/i);
       if (mediumMatch) {
         medium = mediumMatch[1].trim();
-        cleanDescription = cleanDescription.replace(/Medium:\s*[^\n]+\n?/i, '');
+        cleanDescription = cleanDescription.replace(/Medium:[^\S\n]*[^\n]*\n?/i, '');
       }
-      
-      const dimMatch = description.match(/Dimensions:\s*([^\n]+)/i);
+
+      const dimMatch = description.match(/Dimensions:[^\S\n]*([^\n]*)/i);
       if (dimMatch) {
         dimensions = dimMatch[1].trim();
-        cleanDescription = cleanDescription.replace(/Dimensions:\s*[^\n]+\n?/i, '');
+        cleanDescription = cleanDescription.replace(/Dimensions:[^\S\n]*[^\n]*\n?/i, '');
       }
-      
-      cleanDescription = cleanDescription.replace(/Discounts:\s*[^\n]+\n?/i, '').trim();
+
+      cleanDescription = cleanDescription.replace(/Discounts:[^\S\n]*[^\n]*\n?/i, '').trim();
       
       let height = '';
       let width = '';
