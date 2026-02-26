@@ -72,12 +72,14 @@ export default async function handler(req, res) {
       console.log('Processing item - squareId:', item.squareId, 'artistName:', item.artistName);
       const categoryName = `${item.artistName} - ${item.type}`;
       const reportingCategoryName = item.artistName;
-      const dimensions = item.dimensions || `${item.height}" x ${item.width}"`;
-      
+      const dimensions = item.dimensions || (item.height && item.width ? `${item.height}" x ${item.width}"` : '');
+
       let description = item.description || '';
-      description += `\n\nMedium: ${item.medium}`;
-      description += `\nDimensions: ${dimensions}`;
-      if (item.discounts) description += `\nDiscounts: ${item.discounts}`;
+      const extraLines = [];
+      if (item.medium) extraLines.push(`Medium: ${item.medium}`);
+      if (dimensions) extraLines.push(`Dimensions: ${dimensions}`);
+      if (item.discounts) extraLines.push(`Discounts: ${item.discounts}`);
+      if (extraLines.length > 0) description += '\n\n' + extraLines.join('\n');
       description = description.trim();
 
       if (item.squareId) {
@@ -87,6 +89,11 @@ export default async function handler(req, res) {
           const catSearch = await fetch('https://connect.squareup.com/v2/catalog/search', { method: 'POST', headers: { 'Square-Version': '2024-12-18', 'Authorization': `Bearer ${SQUARE_ACCESS_TOKEN}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ object_types: ['CATEGORY'], query: { exact_query: { attribute_name: 'name', attribute_value: catName } } }) });
           const catData = await catSearch.json();
           categoryId = catData.objects?.[0]?.id;
+          if (!categoryId) {
+            const catCreate = await fetch('https://connect.squareup.com/v2/catalog/object', { method: 'POST', headers: { 'Square-Version': '2024-12-18', 'Authorization': `Bearer ${SQUARE_ACCESS_TOKEN}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ idempotency_key: `cat-${catName.replace(/[^a-zA-Z0-9]/g, '-')}-${Date.now()}`, object: { type: 'CATEGORY', id: `#cat-edit-${item.squareId}`, category_data: { name: catName } } }) });
+            const catCreateData = await catCreate.json();
+            categoryId = catCreateData.catalog_object?.id;
+          }
         }
         const updateObject = { type: 'ITEM', id: item.squareId, version: item.version, item_data: { name: item.title, description: description } };
         if (categoryId) { updateObject.item_data.categories = [{ id: categoryId }]; }
