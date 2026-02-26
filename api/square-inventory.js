@@ -153,8 +153,21 @@ export default async function handler(req, res) {
       }
       
       // Parse dimensions and medium from description
-      // Fall back to description_plaintext (used by newer Square API versions)
-      const description = itemData.description || itemData.description_plaintext || '';
+      // Square's catalog/list may return description_html instead of description
+      let rawDescription = itemData.description || itemData.description_plaintext || '';
+      if (!rawDescription && itemData.description_html) {
+        rawDescription = itemData.description_html
+          .replace(/<br\s*\/?>/gi, '\n')
+          .replace(/<\/p>/gi, '\n')
+          .replace(/<p>/gi, '')
+          .replace(/<[^>]*>/g, '')
+          .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"')
+          .trim();
+      }
+      if (item.id === allItems[0]?.id) {
+        console.log('DESC FIELDS for first item:', JSON.stringify({ description: itemData.description, description_plaintext: itemData.description_plaintext, description_html: itemData.description_html }));
+      }
+      const description = rawDescription;
       let medium = '';
       let dimensions = '';
       let cleanDescription = description;
