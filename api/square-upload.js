@@ -95,12 +95,18 @@ export default async function handler(req, res) {
             categoryId = catCreateData.catalog_object?.id;
           }
         }
-        const updateObject = { type: 'ITEM', id: item.squareId, item_data: { name: item.title, description: description } };
+        // Always fetch the latest version from Square before updating to avoid stale-version conflicts
+        const latestFetch = await fetch(`https://connect.squareup.com/v2/catalog/object/${item.squareId}`, { method: 'GET', headers: { 'Square-Version': '2024-12-18', 'Authorization': `Bearer ${SQUARE_ACCESS_TOKEN}` } });
+        const latestData = await latestFetch.json();
+        const latestVersion = latestData.object?.version ?? item.version;
+        const latestVariationVersion = latestData.object?.item_data?.variations?.[0]?.version ?? item.variationVersion;
+
+        const updateObject = { type: 'ITEM', id: item.squareId, version: latestVersion, item_data: { name: item.title, description: description } };
         if (categoryId) { updateObject.item_data.categories = [{ id: categoryId }]; }
         if (item.variationId && item.price) {
-          updateObject.item_data.variations = [{ type: 'ITEM_VARIATION', id: item.variationId, item_variation_data: { item_id: item.squareId, name: 'Regular', sku: item.sku, pricing_type: 'FIXED_PRICING', price_money: { amount: Math.round(parseFloat(item.price) * 100), currency: 'USD' } } }];
+          updateObject.item_data.variations = [{ type: 'ITEM_VARIATION', id: item.variationId, version: latestVariationVersion, item_variation_data: { item_id: item.squareId, name: 'Regular', sku: item.sku, pricing_type: 'FIXED_PRICING', price_money: { amount: Math.round(parseFloat(item.price) * 100), currency: 'USD' } } }];
         }
-        console.log('Attempting update with:', JSON.stringify({ squareId: item.squareId, version: item.version, variationVersion: item.variationVersion }));
+        console.log('Attempting update with latest version:', JSON.stringify({ squareId: item.squareId, latestVersion, latestVariationVersion }));
         const response = await fetch('https://connect.squareup.com/v2/catalog/object', { method: 'POST', headers: { 'Square-Version': '2024-12-18', 'Authorization': `Bearer ${SQUARE_ACCESS_TOKEN}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ idempotency_key: `update-${item.squareId}-${Date.now()}`, object: updateObject }) });
         const data = await response.json();
         console.log('Square update response:', JSON.stringify(data));
