@@ -71,7 +71,7 @@ export default async function handler(req, res) {
     for (const item of items) {
       console.log('Processing item - squareId:', item.squareId, 'artistName:', item.artistName);
       const categoryName = `${item.artistName} - ${item.type}`;
-      const reportingCategoryName = item.artistName;
+      const reportingCategoryName = categoryName; // Reporting category = "Artist - Type"
       const dimensions = item.dimensions || (item.height && item.width ? `${item.height}" x ${item.width}"` : '');
 
       let description = item.description || '';
@@ -120,8 +120,10 @@ export default async function handler(req, res) {
         description = updatedDescription.trim();
 
         const updateObject = { type: 'ITEM', id: item.squareId, version: latestVersion, item_data: { name: item.title, description: description, description_html: descriptionHtml } };
-        // Always include categories — use newly found/created one, or fall back to existing Square categories
+        // Always include categories and reporting_category — fall back to existing Square values if lookup failed
+        const effectiveCategoryId = categoryId || existingCategories[0]?.id;
         updateObject.item_data.categories = categoryId ? [{ id: categoryId }] : existingCategories;
+        if (effectiveCategoryId) { updateObject.item_data.reporting_category = { id: effectiveCategoryId }; }
         if (item.variationId && item.price) {
           updateObject.item_data.variations = [{ type: 'ITEM_VARIATION', id: item.variationId, version: latestVariationVersion, item_variation_data: { item_id: item.squareId, name: 'Regular', sku: item.sku, pricing_type: 'FIXED_PRICING', price_money: { amount: Math.round(parseFloat(item.price) * 100), currency: 'USD' } } }];
         }
@@ -147,15 +149,8 @@ export default async function handler(req, res) {
           const catData = await catResponse.json();
           categoryId = catData.catalog_object?.id;
         }
-        let reportingCategoryId = null;
-        const reportingSearchResponse = await fetch('https://connect.squareup.com/v2/catalog/search', { method: 'POST', headers: { 'Square-Version': '2024-12-18', 'Authorization': `Bearer ${SQUARE_ACCESS_TOKEN}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ object_types: ['CATEGORY'], query: { exact_query: { attribute_name: 'name', attribute_value: reportingCategoryName } } }) });
-        const reportingSearchData = await reportingSearchResponse.json();
-        reportingCategoryId = reportingSearchData.objects?.[0]?.id;
-        if (!reportingCategoryId) {
-          const reportingCatResponse = await fetch('https://connect.squareup.com/v2/catalog/object', { method: 'POST', headers: { 'Square-Version': '2024-12-18', 'Authorization': `Bearer ${SQUARE_ACCESS_TOKEN}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ idempotency_key: `repcat-${reportingCategoryName.replace(/\s/g, '-')}-${Date.now()}`, object: { type: 'CATEGORY', id: `#repcat-${item.id}`, category_data: { name: reportingCategoryName } } }) });
-          const reportingCatData = await reportingCatResponse.json();
-          reportingCategoryId = reportingCatData.catalog_object?.id;
-        }
+        // Reporting category = same category as the main one (Artist - Type)
+        const reportingCategoryId = categoryId;
         const itemData = { idempotency_key: `item-${item.id}-${Date.now()}`, object: { type: 'ITEM', id: `#item-${item.id}`, item_data: { name: item.title, description: description, description_html: descriptionHtml, categories: categoryId ? [{ id: categoryId }] : [], reporting_category: reportingCategoryId ? { id: reportingCategoryId } : undefined, variations: [{ type: 'ITEM_VARIATION', id: `#variation-${item.id}`, item_variation_data: { name: 'Regular', sku: sku, pricing_type: 'FIXED_PRICING', price_money: { amount: Math.round(parseFloat(item.price) * 100), currency: 'USD' }, track_inventory: true } }] } } };
         const response = await fetch('https://connect.squareup.com/v2/catalog/object', { method: 'POST', headers: { 'Square-Version': '2024-12-18', 'Authorization': `Bearer ${SQUARE_ACCESS_TOKEN}`, 'Content-Type': 'application/json' }, body: JSON.stringify(itemData) });
         const data = await response.json();
