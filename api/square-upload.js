@@ -101,8 +101,24 @@ export default async function handler(req, res) {
         const latestVersion = latestData.object?.version ?? item.version;
         const latestVariationVersion = latestData.object?.item_data?.variations?.[0]?.version ?? item.variationVersion;
 
+        // Preserve existing Square data as fallbacks to prevent data loss on partial edits
+        const existingDesc = latestData.object?.item_data?.description || '';
+        const existingMediumMatch = existingDesc.match(/Medium:[^\S\n]*([^\n]+)/i);
+        const effectiveMedium = item.medium || (existingMediumMatch ? existingMediumMatch[1].trim() : '');
+        const existingCategories = latestData.object?.item_data?.categories || [];
+
+        // Rebuild description for this update using effective values (with fallbacks)
+        let updatedDescription = (item.description || '').trim();
+        const updatedLines = [];
+        if (effectiveMedium) updatedLines.push(`Medium: ${effectiveMedium}`);
+        if (dimensions) updatedLines.push(`Dimensions: ${dimensions}`);
+        if (item.discounts) updatedLines.push(`Discounts: ${item.discounts}`);
+        if (updatedLines.length > 0) updatedDescription += '\n\n' + updatedLines.join('\n');
+        description = updatedDescription.trim();
+
         const updateObject = { type: 'ITEM', id: item.squareId, version: latestVersion, item_data: { name: item.title, description: description } };
-        if (categoryId) { updateObject.item_data.categories = [{ id: categoryId }]; }
+        // Always include categories — use newly found/created one, or fall back to existing Square categories
+        updateObject.item_data.categories = categoryId ? [{ id: categoryId }] : existingCategories;
         if (item.variationId && item.price) {
           updateObject.item_data.variations = [{ type: 'ITEM_VARIATION', id: item.variationId, version: latestVariationVersion, item_variation_data: { item_id: item.squareId, name: 'Regular', sku: item.sku, pricing_type: 'FIXED_PRICING', price_money: { amount: Math.round(parseFloat(item.price) * 100), currency: 'USD' } } }];
         }
