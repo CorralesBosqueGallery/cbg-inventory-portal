@@ -95,10 +95,10 @@ export default async function handler(req, res) {
             categoryId = catCreateData.catalog_object?.id;
           }
         }
-        const updateObject = { type: 'ITEM', id: item.squareId, version: item.version, item_data: { name: item.title, description: description } };
+        const updateObject = { type: 'ITEM', id: item.squareId, item_data: { name: item.title, description: description } };
         if (categoryId) { updateObject.item_data.categories = [{ id: categoryId }]; }
         if (item.variationId && item.price) {
-          updateObject.item_data.variations = [{ type: 'ITEM_VARIATION', id: item.variationId, version: item.variationVersion, item_variation_data: { item_id: item.squareId, name: 'Regular', sku: item.sku, pricing_type: 'FIXED_PRICING', price_money: { amount: Math.round(parseFloat(item.price) * 100), currency: 'USD' } } }];
+          updateObject.item_data.variations = [{ type: 'ITEM_VARIATION', id: item.variationId, item_variation_data: { item_id: item.squareId, name: 'Regular', sku: item.sku, pricing_type: 'FIXED_PRICING', price_money: { amount: Math.round(parseFloat(item.price) * 100), currency: 'USD' } } }];
         }
         console.log('Attempting update with:', JSON.stringify({ squareId: item.squareId, version: item.version, variationVersion: item.variationVersion }));
         const response = await fetch('https://connect.squareup.com/v2/catalog/object', { method: 'POST', headers: { 'Square-Version': '2024-12-18', 'Authorization': `Bearer ${SQUARE_ACCESS_TOKEN}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ idempotency_key: `update-${item.squareId}-${Date.now()}`, object: updateObject }) });
@@ -152,7 +152,8 @@ export default async function handler(req, res) {
         results.push({ originalId: item.id, squareId: data.catalog_object?.id, variationId: variationId, sku: data.catalog_object?.item_data?.variations?.[0]?.item_variation_data?.sku || sku, category: categoryName, quantity: quantity, success: true, action: 'created' });
       }
     }
-    return res.status(200).json({ success: true, results: results });
+    const anyFailed = results.some(r => !r.success);
+    return res.status(200).json({ success: !anyFailed, results, error: anyFailed ? results.find(r => !r.success)?.error : undefined });
   } catch (error) {
     console.error('Square Upload Error:', error);
     return res.status(500).json({ success: false, error: error.message });
