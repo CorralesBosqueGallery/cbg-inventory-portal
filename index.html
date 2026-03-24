@@ -613,7 +613,7 @@
                     <div className="max-w-7xl mx-auto px-4 py-6">
                         {activeTab === 'inventory' && (
                             <div>
-                                <div className="bg-white rounded-lg shadow p-4 mb-6">
+                                <div className="bg-white rounded-lg shadow p-4 mb-6 sticky top-[109px] z-10">
                                     <div className="flex flex-wrap gap-4 items-center justify-between">
                                         <div className="flex gap-3"><button onClick={() => setShowAddForm(true)} className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg flex items-center gap-2">➕ Add New</button><button onClick={loadInventory} disabled={loadingInventory} className="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg flex items-center gap-2">{loadingInventory ? '⏳' : '🔄'} Refresh</button></div>
                                         <div className="flex-1 max-w-md"><input type="text" placeholder="🔍 Search..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full px-4 py-2 border rounded-lg" /></div>
