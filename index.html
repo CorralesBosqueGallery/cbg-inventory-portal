@@ -131,6 +131,73 @@
             printWindow.document.close();
         };
         
+        // ── Avery sheet printing (home printer) ───────────────────────────
+        const printAverySKULabels = (items) => {
+            // Avery 5160: 30 labels per sheet, 3 columns x 10 rows
+            // Each label: 2.625" x 1", with specific margins and gutters
+            const printWindow = window.open('', '_blank');
+            const labels = items.map((item) => {
+                const sku = item.sku || item.squareId || 'SKU-' + item.id;
+                return `<div class="label"><div class="category">${item.category || item.artistName + ' - ' + item.type}</div><div class="title">${item.title}</div><div class="price">$${parseFloat(item.price).toFixed(2)}</div><div class="barcode-container"><svg class="barcode" data-sku="${sku}"></svg></div></div>`;
+            }).join('');
+            printWindow.document.write(`<!DOCTYPE html><html><head><title>SKU Labels - Avery 5160</title>
+<script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"><\/script>
+<style>
+@page { size: letter; margin: 0.5in 0.19in; }
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { font-family: Arial, sans-serif; }
+@media print { .notice { display: none !important; } }
+.notice { background: #e8f4fd; border: 2px solid #2e7d8e; padding: 12px; text-align: center; font-size: 12pt; margin-bottom: 12px; border-radius: 6px; }
+.sheet { display: flex; flex-wrap: wrap; width: 8.12in; }
+.label { width: 2.625in; height: 1in; text-align: center; padding: 0.06in 0.08in 0.02in; overflow: hidden; border: 0.5px dashed #ddd; }
+@media print { .label { border: none; } }
+.category { font-size: 6.5pt; font-weight: bold; line-height: 1.1; }
+.title { font-size: 7pt; line-height: 1.1; margin: 1px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.price { font-size: 8pt; font-weight: bold; }
+.barcode-container { margin-top: 1px; }
+.barcode { display: block; margin: 0 auto; }
+</style></head><body>
+<div class="notice">Print on <strong>Avery 5160</strong> label sheets (30 per sheet, 1" x 2-5/8"). Use your regular home printer.</div>
+<div class="sheet">${labels}</div>
+<script>window.onload = function() { document.querySelectorAll('.barcode').forEach(function(el) { try { JsBarcode(el, el.dataset.sku, { format: "CODE128", width: 1.2, height: 16, displayValue: true, fontSize: 8, margin: 0 }); } catch(e) { console.error(e); } }); setTimeout(function() { window.print(); }, 500); };<\/script>
+</body></html>`);
+            printWindow.document.close();
+        };
+
+        const printAveryWallLabels = (items) => {
+            // Avery 5371: 10 business cards per sheet, 2 columns x 5 rows
+            // Each card: 3.5" x 2"
+            const printWindow = window.open('', '_blank');
+            const labels = items.map((item) => {
+                let displayMedium = item.medium || item.type || '';
+                if (displayMedium.length > 30) displayMedium = displayMedium.substring(0, 28) + '...';
+                const titleLength = item.title?.length || 0;
+                let titleFontSize = 15;
+                if (titleLength > 25) titleFontSize = Math.max(12, 15 - ((titleLength - 25) * 0.4));
+                return `<div class="label"><div class="artist">${item.artistName}</div><div class="title" style="font-size:${titleFontSize}pt">${item.title}</div><div class="medium">${displayMedium}</div><div class="price">$${parseFloat(item.price).toFixed(2)}</div></div>`;
+            }).join('');
+            printWindow.document.write(`<!DOCTYPE html><html><head><title>Wall Labels - Avery 5371</title>
+<style>
+@page { size: letter; margin: 0.5in 0.75in; }
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { font-family: 'Aptos', Calibri, Arial, sans-serif; }
+@media print { .notice { display: none !important; } }
+.notice { background: #e8f4fd; border: 2px solid #2e7d8e; padding: 12px; text-align: center; font-size: 12pt; margin-bottom: 12px; border-radius: 6px; }
+.sheet { display: flex; flex-wrap: wrap; width: 7in; }
+.label { width: 3.5in; height: 2in; text-align: center; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 0.15in 0.2in; overflow: hidden; border: 0.5px dashed #ddd; }
+@media print { .label { border: none; } }
+.artist { font-size: 14pt; font-weight: bold; margin-bottom: 3px; }
+.title { font-style: italic; margin-bottom: 3px; line-height: 1.15; }
+.medium { font-size: 12pt; color: #333; margin-bottom: 3px; }
+.price { font-size: 14pt; font-weight: bold; }
+</style></head><body>
+<div class="notice">Print on <strong>Avery 5371</strong> business card sheets (10 per sheet, 3.5" x 2"). Use your regular home printer.</div>
+<div class="sheet">${labels}</div>
+<script>window.onload=function(){setTimeout(function(){window.print();},500);}<\/script>
+</body></html>`);
+            printWindow.document.close();
+        };
+
         const isAdmin = (user) => user && (user.type === 'admin' || user.type === 'subadmin');
         const isMainAdmin = (user) => user && user.type === 'admin';
         const isSubAdmin = (user) => user && user.type === 'subadmin';
@@ -342,7 +409,25 @@
                 setProcessing(false);
             };
 
-            const handlePrintSelected = (type) => { const items = inventory.filter(i => selectedItems.has(i.squareId || i.id)); if (items.length === 0) { alert('Please select items to print'); return; } if (type === 'sku') printSKULabels(items); else printWallLabels(items); };
+            const handlePrintSelected = (type) => {
+                const items = inventory.filter(i => selectedItems.has(i.squareId || i.id));
+                if (items.length === 0) { alert('Please select items to print'); return; }
+                const choice = prompt(
+                    '🖨️ Choose your printer:\n\n' +
+                    '1 = DYMO label printer (at the gallery)\n' +
+                    '2 = Home printer (Avery sheets)\n\n' +
+                    (type === 'sku'
+                        ? 'Home printing uses Avery 5160 (30 labels/sheet, 1" x 2-5/8")'
+                        : 'Home printing uses Avery 5371 business cards (10/sheet, 3.5" x 2")') +
+                    '\n\nEnter 1 or 2:',
+                    '1'
+                );
+                if (choice === '2') {
+                    if (type === 'sku') printAverySKULabels(items); else printAveryWallLabels(items);
+                } else if (choice === '1') {
+                    if (type === 'sku') printSKULabels(items); else printWallLabels(items);
+                }
+            };
 
             const handleUpdateQuantity = async (item, newQuantity) => {
                 if (!item.variationId) { alert('Cannot update quantity - no variation ID'); return; }
