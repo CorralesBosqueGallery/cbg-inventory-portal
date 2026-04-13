@@ -198,6 +198,20 @@
                 loadData();
             }, []);
 
+            // Auto-login when arriving from the integrated portal with ?user=... param
+            useEffect(() => {
+                if (loading || currentUser) return;
+                const params = new URLSearchParams(window.location.search);
+                const autoUser = params.get('user');
+                if (!autoUser) return;
+                const artist = artistsDb[autoUser.toLowerCase()];
+                if (artist && artist.active) {
+                    setCurrentUser({ username: autoUser.toLowerCase(), ...artist });
+                    // Clean the URL so the params don't linger
+                    window.history.replaceState({}, '', window.location.pathname);
+                }
+            }, [loading, artistsDb, currentUser]);
+
             useEffect(() => { if (currentUser && !showSetup) loadInventory(); }, [currentUser, showSetup]);
 
             const loadInventory = async () => {
