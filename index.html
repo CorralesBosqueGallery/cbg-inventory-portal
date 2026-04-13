@@ -199,6 +199,8 @@
             }, []);
 
             // Auto-login when arriving from the integrated portal with ?user=... param
+            // If &admin=1 is also present, grant admin access regardless of the user's
+            // type in the artist database (the portal already verified their role).
             useEffect(() => {
                 if (loading || currentUser) return;
                 const params = new URLSearchParams(window.location.search);
@@ -206,7 +208,12 @@
                 if (!autoUser) return;
                 const artist = artistsDb[autoUser.toLowerCase()];
                 if (artist && artist.active) {
-                    setCurrentUser({ username: autoUser.toLowerCase(), ...artist });
+                    const isAdmin = params.get('admin') === '1';
+                    setCurrentUser({
+                        username: autoUser.toLowerCase(),
+                        ...artist,
+                        ...(isAdmin ? { type: 'admin' } : {}),
+                    });
                     // Clean the URL so the params don't linger
                     window.history.replaceState({}, '', window.location.pathname);
                 }
