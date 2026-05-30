@@ -70,8 +70,11 @@ export default async function handler(req, res) {
     
     for (const item of items) {
       console.log('Processing item - squareId:', item.squareId, 'artistName:', item.artistName);
-      const categoryName = `${item.artistName} - ${item.type}`;
-      const reportingCategoryName = categoryName; // Reporting category = "Artist - Type"
+      // Reporting category = artist name only. The hybrid "Artist - Type"
+      // form was abandoned long ago; the medium lives in the description.
+      // Keeping it artist-only is what the sales-report parser matches against.
+      const categoryName = item.artistName;
+      const reportingCategoryName = categoryName;
       const dimensions = item.dimensions || (item.height && item.width ? `${item.height}" x ${item.width}"` : '');
 
       let description = item.description || '';
